@@ -12,7 +12,7 @@ import time
 import pandas as pd
 from datetime import date, timedelta
 
-from prompts import VIVA_PROMPT, MCQ_PROMPT, ANKI_PROMPT
+from prompts import VIVA_PROMPT, MCQ_PROMPT, ANKI_PROMPT, IMPORT_MCQ_PROMPT
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="The Differential", page_icon="🧠", layout="wide")
@@ -203,6 +203,30 @@ def save_to_cache(doc_hash, topic, viva, mcqs, anki):
     )
     conn.commit()
 
+
+def list_topics_with_mcqs():
+    """Return [(topic, doc_hash, mcq_count), …] for every saved doc that has MCQs."""
+    rows = c.execute("SELECT topic, doc_hash, mcq_json FROM generated_content").fetchall()
+    out = []
+    for topic, doc_hash, mcq_json in rows:
+        try:
+            n = len(json.loads(mcq_json)) if mcq_json else 0
+        except Exception:
+            n = 0
+        if n > 0:
+            out.append((topic, doc_hash, n))
+    return sorted(out, key=lambda x: x[0].lower())
+
+
+def get_mcqs_for_hash(doc_hash):
+    row = c.execute("SELECT mcq_json FROM generated_content WHERE doc_hash=?", (doc_hash,)).fetchone()
+    if not row or not row[0]:
+        return []
+    try:
+        return json.loads(row[0])
+    except Exception:
+        return []
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def extract_text_from_pdf(f):
     reader = PyPDF2.PdfReader(io.BytesIO(f.read()))
@@ -369,26 +393,94 @@ def generate_section(section, pdf_text, topic_name):
         st.session_state.get("anki_result", ""),
     )
 
+def call_gemini_two(prompt_template, questions, answers, max_retries=4):
+    """Like call_gemini but for a prompt that takes separate questions + answers."""
+    prompt = prompt_template.format(questions=questions[:MAX_CHARS], answers=answers[:MAX_CHARS])
+    models_to_try = [MODEL, FALLBACK_MODEL]
+    for model_name in models_to_try:
+        for attempt in range(max_retries):
+            try:
+                resp = client.models.generate_content(
+                    model=model_name, contents=prompt,
+                    config=types.GenerateContentConfig(temperature=0.0),
+                )
+                return resp.text
+            except Exception as e:
+                msg = str(e).lower()
+                transient = any(k in msg for k in ["429","quota","resource_exhausted","503","unavailable","high demand","overloaded"])
+                if transient and attempt < max_retries - 1:
+                    time.sleep(8 * (attempt + 1)); continue
+                if transient and model_name != models_to_try[-1]:
+                    break
+                raise
+    raise RuntimeError("All models unavailable after retries.")
+
+
+def import_paper(questions_text, answers_text, topic_name, doc_hash):
+    """Extract & reformat an existing paper into the MCQ structure, then cache it."""
+    try:
+        raw = call_gemini_two(IMPORT_MCQ_PROMPT, questions_text, answers_text)
+        mcqs = parse_json(raw)
+        st.session_state["mcqs"] = mcqs
+        st.session_state["mcq_submitted"] = {}
+        st.session_state["mcq_mode"] = None
+        st.session_state["mcq_exam_idx"] = 0
+        st.session_state["exam_start_time"] = None
+        st.session_state["gen_errors"] = []
+    except Exception as e:
+        st.session_state["gen_errors"] = [f"Import: {e}"]
+    # Save into the same cache structure (viva/anki stay empty for imported papers)
+    save_to_cache(
+        doc_hash, topic_name,
+        st.session_state.get("viva_data", []),
+        st.session_state.get("mcqs", []),
+        st.session_state.get("anki_result", ""),
+    )
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🧠 The Differential")
     st.markdown("---")
-    st.markdown("**📄 Study Material**")
-    uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"], label_visibility="collapsed")
+
+    app_mode = st.radio(
+        "Mode",
+        ["📝 Generate from notes", "📥 Import existing paper"],
+        label_visibility="collapsed",
+    )
 
     pdf_text = ""
     topic_name = "General"
-    if uploaded_file:
-        with st.spinner("Reading PDF…"):
-            pdf_text = extract_text_from_pdf(uploaded_file)
-        topic_name = uploaded_file.name
-        if pdf_text.strip():
-            st.success(f"✅ {uploaded_file.name}")
-            st.caption(f"{len(pdf_text):,} characters")
-            with st.expander("Preview"):
-                st.text(pdf_text[:1200] + ("…" if len(pdf_text) > 1200 else ""))
-        else:
-            st.warning("⚠️ No text found — scanned PDF? Try OCR first.")
+    import_questions_text = ""
+    import_answers_text = ""
+
+    if app_mode == "📝 Generate from notes":
+        st.markdown("**📄 Study Material**")
+        uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"], label_visibility="collapsed")
+        if uploaded_file:
+            with st.spinner("Reading PDF…"):
+                pdf_text = extract_text_from_pdf(uploaded_file)
+            topic_name = uploaded_file.name
+            if pdf_text.strip():
+                st.success(f"✅ {uploaded_file.name}")
+                st.caption(f"{len(pdf_text):,} characters")
+                with st.expander("Preview"):
+                    st.text(pdf_text[:1200] + ("…" if len(pdf_text) > 1200 else ""))
+            else:
+                st.warning("⚠️ No text found — scanned PDF? Try OCR first.")
+    else:
+        st.markdown("**📥 Import Existing Paper**")
+        st.caption("Upload the questions, then the answer key.")
+        q_file = st.file_uploader("Questions PDF", type=["pdf"], key="imp_q")
+        a_file = st.file_uploader("Answer key PDF", type=["pdf"], key="imp_a")
+        if q_file:
+            with st.spinner("Reading questions…"):
+                import_questions_text = extract_text_from_pdf(q_file)
+            st.success(f"✅ Questions: {q_file.name}")
+            topic_name = q_file.name
+        if a_file:
+            with st.spinner("Reading answer key…"):
+                import_answers_text = extract_text_from_pdf(a_file)
+            st.success(f"✅ Answers: {a_file.name}")
 
     st.markdown("---")
     st.markdown("**🗓️ Exam Countdown**")
@@ -427,6 +519,26 @@ if pdf_text.strip() and st.session_state.get("current_doc") != doc_fingerprint(p
     st.session_state["loaded_from_cache"] = bool(cached)
     st.rerun()
 
+# ── Import mode: when both files are present, set up the document & load cache ──
+import_ready = bool(import_questions_text.strip()) and bool(import_answers_text.strip())
+if import_ready:
+    combined = import_questions_text + "\n=====ANSWERS=====\n" + import_answers_text
+    imp_hash = doc_fingerprint(combined)
+    if st.session_state.get("current_doc") != imp_hash:
+        cached = load_from_cache(imp_hash)
+        st.session_state["current_doc"] = imp_hash
+        st.session_state["mcqs"] = cached["mcqs"] if cached else []
+        st.session_state["viva_data"] = cached["viva"] if cached else []
+        st.session_state["anki_result"] = cached["anki"] if cached else ""
+        st.session_state["mcq_submitted"] = {}
+        st.session_state["mcq_mode"] = None
+        st.session_state["mcq_exam_idx"] = 0
+        st.session_state["exam_start_time"] = None
+        st.session_state["gen_errors"] = []
+        st.session_state["loaded_from_cache"] = bool(cached)
+        st.session_state["is_imported"] = True
+        st.rerun()
+
 # ── Header ────────────────────────────────────────────────────────────────────
 streak = calculate_streak()
 col_title, col_streak = st.columns([4, 1])
@@ -441,6 +553,7 @@ with col_streak:
     )
 
 pdf_ready = bool(pdf_text.strip())
+import_ready = bool(import_questions_text.strip()) and bool(import_answers_text.strip())
 
 if pdf_ready and st.session_state.get("loaded_from_cache"):
     st.success("📂 Loaded from saved — no API calls used. This document was generated previously.")
@@ -451,8 +564,8 @@ if st.session_state.get("gen_errors"):
         st.error(f"⚠️ Generation issue → {err}")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_dash, tab_viva, tab_mcq, tab_anki = st.tabs(
-    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki"]
+tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock = st.tabs(
+    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam"]
 )
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -525,7 +638,7 @@ with tab_viva:
     st.markdown("### Viva Voce")
 
     if not pdf_ready:
-        st.info("👈 Upload a PDF in the sidebar to begin.")
+        st.info("👈 Viva is available in 'Generate from notes' mode. Switch mode in the sidebar.")
     elif not st.session_state.get("viva_data"):
         st.markdown("Generate viva questions for this document when you're ready.")
         if st.button("⚡ Generate Viva Questions", type="primary", key="gen_viva"):
@@ -593,15 +706,25 @@ with tab_viva:
 # MCQ TAB
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_mcq:
-    if not pdf_ready:
-        st.info("👈 Upload a PDF in the sidebar to begin.")
+    if not pdf_ready and not import_ready:
+        st.info("👈 Upload a PDF (or import a paper) in the sidebar to begin.")
     elif not st.session_state.get("mcqs"):
-        st.markdown("### 📝 MCQ Session")
-        st.markdown("Generate clinical MCQs for this document when you're ready.")
-        if st.button("⚡ Generate MCQs", type="primary", key="gen_mcq"):
-            with st.spinner("Generating clinical MCQs…"):
-                generate_section("mcq", pdf_text, topic_name)
-            st.rerun()
+        if import_ready:
+            st.markdown("### 📥 Import Existing Paper")
+            st.markdown("Both files loaded. Convert this paper into your interactive Qbank.")
+            if st.button("⚡ Import & Convert Paper", type="primary", key="imp_mcq"):
+                with st.spinner("Extracting questions and matching answers…"):
+                    combined = import_questions_text + "\n=====ANSWERS=====\n" + import_answers_text
+                    import_paper(import_questions_text, import_answers_text,
+                                 topic_name, doc_fingerprint(combined))
+                st.rerun()
+        else:
+            st.markdown("### 📝 MCQ Session")
+            st.markdown("Generate clinical MCQs for this document when you're ready.")
+            if st.button("⚡ Generate MCQs", type="primary", key="gen_mcq"):
+                with st.spinner("Generating clinical MCQs…"):
+                    generate_section("mcq", pdf_text, topic_name)
+                st.rerun()
     else:
         mcqs = st.session_state["mcqs"]
         mode = st.session_state.get("mcq_mode")
@@ -609,7 +732,8 @@ with tab_mcq:
         # ── MODE SELECTION SCREEN ─────────────────────────────────────────────
         if mode is None:
             st.markdown("### 📝 MCQ Session")
-            st.markdown(f"**{len(mcqs)} questions** generated from *{topic_name}*")
+            src_word = "imported from" if st.session_state.get("is_imported") else "generated from"
+            st.markdown(f"**{len(mcqs)} questions** {src_word} *{topic_name}*")
             st.markdown("")
 
             st.markdown(
@@ -887,7 +1011,7 @@ with tab_anki:
     st.markdown("### 🗂️ Anki Cloze-Deletion Flashcards")
 
     if not pdf_ready:
-        st.info("👈 Upload a PDF in the sidebar to begin.")
+        st.info("👈 Anki is available in 'Generate from notes' mode. Switch mode in the sidebar.")
     elif not st.session_state.get("anki_result"):
         st.markdown("Generate Anki cloze cards for this document when you're ready.")
         if st.button("⚡ Generate Anki Cards", type="primary", key="gen_anki"):
@@ -917,3 +1041,222 @@ with tab_anki:
             'separator <code>|</code> → note type <strong>Cloze</strong> → Import'
             '</div>', unsafe_allow_html=True
         )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# MOCK EXAM TAB — build a custom exam from your saved topic pool (no API calls)
+# ═════════════════════════════════════════════════════════════════════════════
+with tab_mock:
+    st.markdown("### 🎯 Mock Exam Builder")
+    st.caption("Assemble a custom exam from topics you've already generated. No API calls — instant and free.")
+
+    topics = list_topics_with_mcqs()
+
+    # If a mock is currently running, render it; otherwise show the builder.
+    mock_state = st.session_state.get("mock_running", False)
+
+    if not mock_state:
+        if not topics:
+            st.info("You haven't generated any MCQs yet. Generate questions from a document first, then come back to build a mock exam.")
+        else:
+            total_available = sum(n for _, _, n in topics)
+            st.markdown(
+                f'<p style="color:#8A8070;font-size:0.9rem;text-transform:uppercase;'
+                f'letter-spacing:0.08em;font-weight:600;">Choose Topics '
+                f'({len(topics)} available · {total_available} questions total)</p>',
+                unsafe_allow_html=True
+            )
+
+            # Topic selection checkboxes
+            selected_hashes = []
+            for topic, doc_hash, n in topics:
+                short = topic if len(topic) <= 45 else topic[:42] + "…"
+                if st.checkbox(f"{short}  ·  {n} Q", key=f"mock_pick_{doc_hash}"):
+                    selected_hashes.append(doc_hash)
+
+            st.markdown("---")
+
+            # Pool size from selection
+            pool = []
+            for h in selected_hashes:
+                pool.extend(get_mcqs_for_hash(h))
+            pool_size = len(pool)
+
+            col_n, col_mode = st.columns(2)
+            with col_n:
+                if pool_size > 0:
+                    num_q = st.slider("Number of questions", min_value=1,
+                                      max_value=pool_size, value=min(20, pool_size))
+                else:
+                    st.caption("Select at least one topic to continue.")
+                    num_q = 0
+            with col_mode:
+                exam_style = st.radio("Mode", ["⏱️ Timed exam", "📖 Untimed review"],
+                                      label_visibility="visible")
+
+            st.markdown("")
+            if pool_size > 0 and st.button("🎯 Start Mock Exam", type="primary", use_container_width=True):
+                import random
+                chosen = random.sample(pool, num_q)
+                st.session_state["mock_questions"] = chosen
+                st.session_state["mock_submitted"] = {}
+                st.session_state["mock_idx"] = 0
+                st.session_state["mock_marked"] = set()
+                st.session_state["mock_running"] = True
+                st.session_state["mock_timed"] = exam_style.startswith("⏱️")
+                st.session_state["mock_start"] = time.time()
+                st.rerun()
+
+    else:
+        # ── RUNNING MOCK EXAM ──────────────────────────────────────────────────
+        mqs = st.session_state["mock_questions"]
+        submitted = st.session_state["mock_submitted"]
+        idx = st.session_state["mock_idx"]
+        marked = st.session_state["mock_marked"]
+        total = len(mqs)
+        timed = st.session_state.get("mock_timed", True)
+        elapsed = time.time() - st.session_state.get("mock_start", time.time())
+
+        # ── Question navigator sidebar (UWorld-style) + main panel ──
+        nav_col, main_col = st.columns([1, 5])
+
+        with nav_col:
+            st.markdown(
+                '<p style="color:#8A8070;font-size:0.7rem;text-transform:uppercase;'
+                'letter-spacing:0.08em;font-weight:700;margin-bottom:8px;">Items</p>',
+                unsafe_allow_html=True
+            )
+            for i in range(total):
+                # Status dot: answered=gold, marked=red ring, current=bracketed
+                done = i in submitted
+                is_mark = i in marked
+                if i == idx:
+                    label = f"▸ {i+1}"
+                elif done:
+                    label = f"✓ {i+1}"
+                elif is_mark:
+                    label = f"⚑ {i+1}"
+                else:
+                    label = f"  {i+1}"
+                if st.button(label, key=f"nav_{i}", use_container_width=True):
+                    st.session_state["mock_idx"] = i
+                    st.rerun()
+
+        with main_col:
+            # Top bar: progress + timer
+            attempted = len(submitted)
+            correct_n = sum(1 for v in submitted.values() if v["correct"])
+            pct = ((idx + 1) / total) * 100
+            timer_html = (f'<span style="font-weight:700;color:#8A8070;font-family:monospace;font-size:1rem;">⏱ {fmt_time(elapsed)}</span>'
+                          if timed else '<span style="color:#8A8070;font-size:0.85rem;">Untimed</span>')
+            st.markdown(
+                f'<div style="display:flex;justify-content:space-between;align-items:center;'
+                f'background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+                f'padding:14px 20px;margin-bottom:16px;">'
+                f'<span style="font-weight:700;color:#C9A84C;font-size:1rem;">Item {idx+1} / {total}</span>'
+                f'<div style="flex:1;margin:0 20px;background:#2E2A22;border-radius:4px;height:6px;">'
+                f'<div style="width:{pct:.0f}%;background:#C9A84C;height:6px;border-radius:4px;"></div></div>'
+                f'{timer_html}</div>',
+                unsafe_allow_html=True
+            )
+
+            mcq = mqs[idx]
+            correct_letter = mcq["correct_answer_letter"].strip().upper()
+            is_sub = idx in submitted
+
+            # Mark-for-review toggle
+            mark_label = "⚑ Unmark" if idx in marked else "⚑ Mark for review"
+            if st.button(mark_label, key=f"mock_mark_{idx}"):
+                if idx in marked:
+                    marked.discard(idx)
+                else:
+                    marked.add(idx)
+                st.rerun()
+
+            # Question stem (highlightable)
+            st.markdown(
+                f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+                f'padding:24px 28px;margin:12px 0 20px 0;user-select:text;cursor:text;">'
+                f'<p style="margin:0;font-size:1.02rem;line-height:1.75;color:#FAFAF8;">'
+                f'{mcq["question_text"]}</p></div>',
+                unsafe_allow_html=True
+            )
+
+            if not is_sub:
+                choice = st.radio("Answer", mcq["options"], key=f"mock_r_{idx}",
+                                  index=None, label_visibility="collapsed")
+                if st.button("Submit Answer", key=f"mock_sub_{idx}", type="primary"):
+                    if choice:
+                        ok = choice.strip()[0].upper() == correct_letter
+                        c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct) VALUES (?,?,?,?,?)",
+                                  ("Mock Exam", mcq["question_text"], choice, correct_letter, ok))
+                        conn.commit()
+                        st.session_state["mock_submitted"][idx] = {"choice": choice, "correct": ok}
+                        st.rerun()
+                    else:
+                        st.warning("Select an answer first.")
+            else:
+                sub = submitted[idx]
+                chosen_letter = sub["choice"].strip()[0].upper()
+                for opt in mcq["options"]:
+                    ol = opt.strip()[0].upper()
+                    ot = opt[2:].strip() if len(opt) > 2 else opt
+                    if ol == correct_letter:
+                        rc, bc, ic = "opt-row opt-correct", "badge badge-correct", "✓"
+                    elif ol == chosen_letter and not sub["correct"]:
+                        rc, bc, ic = "opt-row opt-wrong", "badge badge-wrong", "✗"
+                    else:
+                        rc, bc, ic = "opt-row opt-dim", "badge", ol
+                    st.markdown(f'<div class="{rc}"><span class="{bc}">{ic}</span><span>{ot}</span></div>',
+                                unsafe_allow_html=True)
+
+                with st.expander("📖 Explanation"):
+                    st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
+                    if mcq.get("key_learning_points"):
+                        st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
+
+            # Navigation
+            st.markdown("")
+            cprev, cnext, cfin = st.columns(3)
+            with cprev:
+                if idx > 0 and st.button("← Previous", key="mock_prev", use_container_width=True):
+                    st.session_state["mock_idx"] = idx - 1; st.rerun()
+            with cnext:
+                if idx < total - 1 and st.button("Next →", key="mock_next", use_container_width=True):
+                    st.session_state["mock_idx"] = idx + 1; st.rerun()
+            with cfin:
+                if st.button("🏁 Finish", key="mock_fin", type="primary", use_container_width=True):
+                    st.session_state["mock_finished"] = True
+                    st.session_state["mock_running"] = False
+                    st.rerun()
+
+    # ── Results screen ──
+    if st.session_state.get("mock_finished"):
+        mqs = st.session_state.get("mock_questions", [])
+        submitted = st.session_state.get("mock_submitted", {})
+        total = len(mqs)
+        attempted = len(submitted)
+        correct_n = sum(1 for v in submitted.values() if v["correct"])
+        elapsed = time.time() - st.session_state.get("mock_start", time.time())
+        acc = correct_n / attempted * 100 if attempted else 0
+
+        st.markdown("---")
+        st.markdown("### 🏁 Mock Exam Complete")
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("Attempted", f"{attempted}/{total}")
+        r2.metric("Correct", correct_n)
+        r3.metric("Accuracy", f"{acc:.1f}%")
+        r4.metric("Time", fmt_time(elapsed))
+
+        if acc >= 80:
+            st.success("🎉 Excellent — above 80%.")
+        elif acc >= 60:
+            st.warning("📚 Solid — review what you missed.")
+        else:
+            st.error("🔄 Below 60% — worth another pass.")
+
+        if st.button("🎯 Build Another Mock", type="primary"):
+            for k in ["mock_finished", "mock_questions", "mock_submitted",
+                      "mock_idx", "mock_marked", "mock_running", "mock_start"]:
+                st.session_state.pop(k, None)
+            st.rerun()
