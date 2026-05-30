@@ -140,6 +140,54 @@ hr { border-color: #2E2A22 !important; }
 .badge-correct { background: #4CAF50 !important; color: #141210 !important; }
 .badge-wrong   { background: #EF5350 !important; color: #FAFAF8 !important; }
 .badge-gold    { background: #C9A84C !important; color: #141210 !important; }
+
+/* ── Phase 3 polish ── */
+
+/* Compact navigator buttons (the Items 1..N column) */
+[data-testid="column"]:first-child .stButton > button {
+    padding: 6px 8px !important;
+    font-size: 0.82rem !important;
+    font-family: monospace !important;
+    text-align: left !important;
+    border-radius: 6px !important;
+    border: 1px solid #2E2A22 !important;
+    background: #1A1813 !important;
+    color: #C9B98A !important;
+    margin-bottom: 2px !important;
+    min-height: 0 !important;
+    line-height: 1.2 !important;
+}
+[data-testid="column"]:first-child .stButton > button:hover {
+    border-color: #C9A84C !important;
+    background: #252015 !important;
+    color: #FAFAF8 !important;
+}
+
+/* Tighter option rows with a subtle lift */
+.opt-row {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.opt-correct { box-shadow: 0 0 0 1px #4CAF50 inset; }
+.opt-wrong   { box-shadow: 0 0 0 1px #EF5350 inset; }
+
+/* Radio options as clean cards in exam mode (pre-submission) */
+.stRadio > div > label {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    line-height: 1.5 !important;
+}
+
+/* Expander as a quieter, flatter panel */
+.streamlit-expanderHeader { font-size: 0.9rem !important; }
+
+/* Reduce default vertical gaps between blocks for a denser, exam-like feel */
+[data-testid="stVerticalBlock"] { gap: 0.6rem !important; }
+
+/* Primary action buttons a touch chunkier */
+.stButton > button[kind="primary"] { letter-spacing: 0.02em; }
+
+/* Metric cards: subtle hover lift on dashboard */
+[data-testid="metric-container"] { transition: transform 0.12s, border-color 0.12s; }
+[data-testid="metric-container"]:hover { transform: translateY(-2px); border-color: #3A352B; }
 </style>
 """, unsafe_allow_html=True)
 
