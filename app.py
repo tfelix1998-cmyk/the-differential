@@ -244,17 +244,48 @@ def call_gemini(prompt_template, material, max_retries=4):
     raise RuntimeError("All models unavailable after retries.")
 
 def parse_json(raw):
-    """Parse JSON from model output, tolerating markdown fences and stray text."""
+    """Parse JSON from model output, tolerating fences, stray text, and minor errors."""
     clean = re.sub(r"```(?:json)?", "", raw).replace("```", "").strip()
+
+    # Attempt 1: parse as-is
     try:
         return json.loads(clean)
     except json.JSONDecodeError:
-        # Fallback: grab everything between the first [ and the last ]
-        start = clean.find("[")
-        end = clean.rfind("]")
-        if start != -1 and end != -1 and end > start:
-            return json.loads(clean[start:end + 1])
-        raise
+        pass
+
+    # Attempt 2: isolate the array between the first [ and last ]
+    start, end = clean.find("["), clean.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        body = clean[start:end + 1]
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            # Attempt 3: remove trailing commas before } or ] (a common model slip)
+            repaired = re.sub(r",\s*([}\]])", r"\1", body)
+            try:
+                return json.loads(repaired)
+            except json.JSONDecodeError:
+                # Attempt 4: salvage — parse each complete {...} object individually
+                # and keep the ones that are valid. Drops only the broken object(s).
+                objs = []
+                depth, obj_start = 0, None
+                for idx, ch in enumerate(repaired):
+                    if ch == "{":
+                        if depth == 0:
+                            obj_start = idx
+                        depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                        if depth == 0 and obj_start is not None:
+                            chunk = repaired[obj_start:idx + 1]
+                            try:
+                                objs.append(json.loads(chunk))
+                            except json.JSONDecodeError:
+                                pass  # skip the one broken object
+                            obj_start = None
+                if objs:
+                    return objs
+    raise json.JSONDecodeError("Could not parse model output", clean, 0)
 
 def call_and_parse(prompt_template, material, attempts=2):
     """Call Gemini and parse JSON. If parsing fails, regenerate once more."""
@@ -736,13 +767,9 @@ with tab_mcq:
                     )
 
                 with st.expander("📖 Full explanation"):
-                    st.markdown(f"**Key learning point:** {mcq.get('key_learning_points','')}")
-                    tbl = mcq.get("answer_table", [])
-                    if tbl:
-                        rows = [{"Opt": r.get("option",""), "": "✅" if r.get("correct") else "❌",
-                                 "Explanation": r.get("explanation",""), "Clinical Reasoning": r.get("clinical_reasoning","")}
-                                for r in tbl]
-                        st.dataframe(pd.DataFrame(rows).set_index("Opt"), use_container_width=True)
+                    st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
+                    if mcq.get("key_learning_points"):
+                        st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
 
                 col_p2, col_n2 = st.columns(2)
                 with col_p2:
@@ -817,13 +844,9 @@ with tab_mcq:
                         st.markdown(f'<div class="{rc}"><span class="{bc}">{ic}</span><span>{ot}</span></div>', unsafe_allow_html=True)
 
                     with st.expander("📖 Explanation"):
-                        st.markdown(f"**Key learning point:** {mcq.get('key_learning_points','')}")
-                        tbl = mcq.get("answer_table", [])
-                        if tbl:
-                            rows = [{"Opt": r.get("option",""), "": "✅" if r.get("correct") else "❌",
-                                     "Explanation": r.get("explanation",""), "Clinical Reasoning": r.get("clinical_reasoning","")}
-                                    for r in tbl]
-                            st.dataframe(pd.DataFrame(rows).set_index("Opt"), use_container_width=True)
+                        st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
+                        if mcq.get("key_learning_points"):
+                            st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
 
                 st.markdown('<hr style="margin:20px 0;">', unsafe_allow_html=True)
 
