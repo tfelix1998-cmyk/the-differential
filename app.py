@@ -7,6 +7,7 @@ import json
 import re
 import io
 import os
+import hashlib
 import time
 import pandas as pd
 from datetime import date, timedelta
@@ -161,7 +162,45 @@ c.execute("""CREATE TABLE IF NOT EXISTS mcq_attempts (
 c.execute("""CREATE TABLE IF NOT EXISTS viva_reviews (
     id INTEGER PRIMARY KEY, topic TEXT, question_text TEXT,
     confidence INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+# Permanent cache of generated content, keyed by a hash of the PDF text.
+# Once a document is generated, it is saved here forever — re-opening it loads
+# from storage with ZERO API calls.
+c.execute("""CREATE TABLE IF NOT EXISTS generated_content (
+    doc_hash TEXT PRIMARY KEY, topic TEXT,
+    viva_json TEXT, mcq_json TEXT, anki_text TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
 conn.commit()
+
+
+def doc_fingerprint(pdf_text):
+    """A stable hash of the document text — identifies a document uniquely."""
+    return hashlib.sha256(pdf_text.encode("utf-8")).hexdigest()
+
+
+def load_from_cache(doc_hash):
+    """Return saved generation for this document, or None if not generated yet."""
+    row = c.execute(
+        "SELECT viva_json, mcq_json, anki_text FROM generated_content WHERE doc_hash=?",
+        (doc_hash,)
+    ).fetchone()
+    if not row:
+        return None
+    viva_json, mcq_json, anki_text = row
+    return {
+        "viva": json.loads(viva_json) if viva_json else [],
+        "mcqs": json.loads(mcq_json) if mcq_json else [],
+        "anki": anki_text or "",
+    }
+
+
+def save_to_cache(doc_hash, topic, viva, mcqs, anki):
+    """Persist a document's generated content permanently."""
+    c.execute(
+        "INSERT OR REPLACE INTO generated_content "
+        "(doc_hash, topic, viva_json, mcq_json, anki_text) VALUES (?,?,?,?,?)",
+        (doc_hash, topic, json.dumps(viva), json.dumps(mcqs), anki)
+    )
+    conn.commit()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def extract_text_from_pdf(f):
@@ -252,8 +291,8 @@ def build_heatmap_html(days=182):
 # upload from blowing the token limit and failing the whole request.
 MAX_CHARS = 200000
 
-def generate_all(pdf_text, topic_name):
-    """Generate Viva, MCQ, Anki ALL AT ONCE using parallel threads."""
+def generate_all(pdf_text, topic_name, doc_hash):
+    """Generate Viva, MCQ, Anki, then save permanently to the cache."""
     errors = []
     material = pdf_text[:MAX_CHARS]
 
@@ -303,8 +342,16 @@ def generate_all(pdf_text, topic_name):
     progress.empty()
 
     st.session_state["generated_for"] = topic_name
-    if errors:
-        st.warning("Some generations had errors: " + " | ".join(errors))
+    st.session_state["gen_errors"] = errors
+
+    # Save permanently so this document never needs the API again
+    save_to_cache(
+        doc_hash,
+        topic_name,
+        st.session_state.get("viva_data", []),
+        st.session_state.get("mcqs", []),
+        st.session_state.get("anki_result", ""),
+    )
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -343,12 +390,33 @@ with st.sidebar:
     st.markdown("---")
     st.caption("Built with Streamlit + Gemini")
 
-# ── Auto-generate when new PDF uploaded ───────────────────────────────────────
+# ── Load from cache, or generate if this document is new ──────────────────────
 if pdf_text.strip() and st.session_state.get("generated_for") != topic_name:
-    st.markdown("# 🧠 The Differential")
-    st.markdown(f"**{topic_name}** uploaded — generating all study materials now…")
-    generate_all(pdf_text, topic_name)
-    st.rerun()
+    doc_hash = doc_fingerprint(pdf_text)
+    cached = load_from_cache(doc_hash)
+
+    if cached:
+        # Already generated before — load instantly, NO API calls
+        st.session_state["viva_data"] = cached["viva"]
+        st.session_state["viva_revealed"] = {}
+        st.session_state["viva_confidence_logged"] = {}
+        st.session_state["mcqs"] = cached["mcqs"]
+        st.session_state["mcq_submitted"] = {}
+        st.session_state["mcq_mode"] = None
+        st.session_state["mcq_exam_idx"] = 0
+        st.session_state["exam_start_time"] = None
+        st.session_state["anki_result"] = cached["anki"]
+        st.session_state["generated_for"] = topic_name
+        st.session_state["gen_errors"] = []
+        st.session_state["loaded_from_cache"] = True
+        st.rerun()
+    else:
+        # New document — generate once, then it's saved forever
+        st.markdown("# 🧠 The Differential")
+        st.markdown(f"**{topic_name}** is new — generating study materials (one time only)…")
+        generate_all(pdf_text, topic_name, doc_hash)
+        st.session_state["loaded_from_cache"] = False
+        st.rerun()
 
 # ── Header ────────────────────────────────────────────────────────────────────
 streak = calculate_streak()
@@ -364,6 +432,14 @@ with col_streak:
     )
 
 pdf_ready = bool(pdf_text.strip()) and st.session_state.get("generated_for") == topic_name
+
+if pdf_ready and st.session_state.get("loaded_from_cache"):
+    st.success("📂 Loaded from saved — no API calls used. This document was generated previously.")
+
+# Show any generation errors persistently (until next successful generation)
+if st.session_state.get("gen_errors"):
+    for err in st.session_state["gen_errors"]:
+        st.error(f"⚠️ Generation issue → {err}")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tab_dash, tab_viva, tab_mcq, tab_anki = st.tabs(
