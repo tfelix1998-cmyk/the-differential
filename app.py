@@ -8,6 +8,7 @@ import re
 import io
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 from datetime import date, timedelta
 
@@ -213,45 +214,57 @@ def build_heatmap_html(days=182):
         cells.append(f'<div class="heatmap-cell" style="background:{color}" title="{d.strftime("%b %d")}: {cnt}"></div>')
     return f'<div class="heatmap-grid">{"".join(cells)}</div>'
 
+# Cap how much PDF text we send — speeds every call and avoids token limits.
+# ~40k characters is plenty for high-yield study material from one document.
+MAX_CHARS = 40000
+
 def generate_all(pdf_text, topic_name):
-    """Generate Viva, MCQ, Anki in sequence and store in session_state."""
+    """Generate Viva, MCQ, Anki ALL AT ONCE using parallel threads."""
     errors = []
-    
-    progress = st.progress(0, text="⚡ Generating Viva questions…")
-    try:
-        raw = call_gemini(VIVA_PROMPT, pdf_text)
-        viva_data = parse_json(raw)
-        viva_data = [q for q in viva_data if q.get("question") != "👉 COMPLETE"]
-        st.session_state["viva_data"] = viva_data
-        st.session_state["viva_revealed"] = {}
-        st.session_state["viva_confidence_logged"] = {}
-    except Exception as e:
-        errors.append(f"Viva: {e}")
-        st.session_state["viva_data"] = []
+    material = pdf_text[:MAX_CHARS]
 
-    progress.progress(33, text="⚡ Generating MCQs…")
-    try:
-        raw = call_gemini(MCQ_PROMPT, pdf_text)
-        mcqs = parse_json(raw)
-        st.session_state["mcqs"] = mcqs
-        st.session_state["mcq_submitted"] = {}
-        st.session_state["mcq_mode"] = None
-        st.session_state["mcq_exam_idx"] = 0
-        st.session_state["exam_start_time"] = None
-    except Exception as e:
-        errors.append(f"MCQ: {e}")
-        st.session_state["mcqs"] = []
+    progress = st.progress(0, text="⚡ Generating Viva, MCQ & Anki in parallel…")
 
-    progress.progress(66, text="⚡ Generating Anki cards…")
-    try:
-        raw = call_gemini(ANKI_PROMPT, pdf_text)
-        st.session_state["anki_result"] = raw
-    except Exception as e:
-        errors.append(f"Anki: {e}")
-        st.session_state["anki_result"] = ""
+    # Fire all three API calls simultaneously
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_viva = executor.submit(call_gemini, VIVA_PROMPT, material)
+        future_mcq  = executor.submit(call_gemini, MCQ_PROMPT, material)
+        future_anki = executor.submit(call_gemini, ANKI_PROMPT, material)
+
+        # ── Viva result ──
+        try:
+            viva_data = parse_json(future_viva.result())
+            viva_data = [q for q in viva_data if q.get("question") != "👉 COMPLETE"]
+            st.session_state["viva_data"] = viva_data
+            st.session_state["viva_revealed"] = {}
+            st.session_state["viva_confidence_logged"] = {}
+        except Exception as e:
+            errors.append(f"Viva: {e}")
+            st.session_state["viva_data"] = []
+        progress.progress(40, text="⚡ Viva ready · finishing MCQ & Anki…")
+
+        # ── MCQ result ──
+        try:
+            mcqs = parse_json(future_mcq.result())
+            st.session_state["mcqs"] = mcqs
+            st.session_state["mcq_submitted"] = {}
+            st.session_state["mcq_mode"] = None
+            st.session_state["mcq_exam_idx"] = 0
+            st.session_state["exam_start_time"] = None
+        except Exception as e:
+            errors.append(f"MCQ: {e}")
+            st.session_state["mcqs"] = []
+        progress.progress(75, text="⚡ MCQ ready · finishing Anki…")
+
+        # ── Anki result ──
+        try:
+            st.session_state["anki_result"] = future_anki.result()
+        except Exception as e:
+            errors.append(f"Anki: {e}")
+            st.session_state["anki_result"] = ""
 
     progress.progress(100, text="✅ All study materials ready!")
-    time.sleep(0.8)
+    time.sleep(0.6)
     progress.empty()
 
     st.session_state["generated_for"] = topic_name
