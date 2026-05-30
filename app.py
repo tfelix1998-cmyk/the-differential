@@ -151,6 +151,7 @@ if not GEMINI_API_KEY:
 
 client = genai_new.Client(api_key=GEMINI_API_KEY)
 MODEL = "gemini-2.5-flash"
+FALLBACK_MODEL = "gemini-2.5-flash-lite"  # tried if the primary is overloaded
 
 # ── Database ──────────────────────────────────────────────────────────────────
 conn = sqlite3.connect("study_data.db", check_same_thread=False)
@@ -207,25 +208,40 @@ def extract_text_from_pdf(f):
     reader = PyPDF2.PdfReader(io.BytesIO(f.read()))
     return "\n\n".join(p.extract_text() for p in reader.pages if p.extract_text())
 
-def call_gemini(prompt_template, material, max_retries=3):
-    """Call Gemini. If we hit a rate limit (429), wait and retry automatically."""
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model=MODEL,
-                contents=prompt_template.format(material=material),
-                config=types.GenerateContentConfig(temperature=0.0),
-            )
-            return response.text
-        except Exception as e:
-            msg = str(e).lower()
-            is_rate_limit = "429" in msg or "quota" in msg or "rate" in msg or "resource_exhausted" in msg
-            if is_rate_limit and attempt < max_retries - 1:
-                # Wait progressively longer: 20s, then 40s
-                wait = 20 * (attempt + 1)
-                time.sleep(wait)
-                continue
-            raise
+def call_gemini(prompt_template, material, max_retries=4):
+    """
+    Call Gemini with resilience:
+      • Retries on rate limits (429) and 'model overloaded' (503).
+      • If the primary model stays unavailable, falls back to the lite model.
+    """
+    prompt = prompt_template.format(material=material)
+    models_to_try = [MODEL, FALLBACK_MODEL]
+
+    for model_name in models_to_try:
+        for attempt in range(max_retries):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(temperature=0.0),
+                )
+                return response.text
+            except Exception as e:
+                msg = str(e).lower()
+                is_rate_limit = "429" in msg or "quota" in msg or "resource_exhausted" in msg
+                is_overloaded = "503" in msg or "unavailable" in msg or "high demand" in msg or "overloaded" in msg
+
+                if (is_rate_limit or is_overloaded) and attempt < max_retries - 1:
+                    # Back off: 8s, 16s, 24s … then on final attempt, fall through
+                    # to the next model in the list.
+                    time.sleep(8 * (attempt + 1))
+                    continue
+                # Out of retries for this model — break to try the fallback model
+                if (is_rate_limit or is_overloaded) and model_name != models_to_try[-1]:
+                    break
+                raise
+    # Should not reach here, but just in case
+    raise RuntimeError("All models unavailable after retries.")
 
 def parse_json(raw):
     """Parse JSON from model output, tolerating markdown fences and stray text."""
