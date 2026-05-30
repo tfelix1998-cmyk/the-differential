@@ -307,63 +307,32 @@ def build_heatmap_html(days=182):
 # upload from blowing the token limit and failing the whole request.
 MAX_CHARS = 200000
 
-def generate_all(pdf_text, topic_name, doc_hash):
-    """Generate Viva, MCQ, Anki, then save permanently to the cache."""
-    errors = []
+def generate_section(section, pdf_text, topic_name):
+    """Generate ONE section on demand, save it to the cache, keep the others intact."""
+    doc_hash = doc_fingerprint(pdf_text)
     material = pdf_text[:MAX_CHARS]
-
-    progress = st.progress(0, text="⚡ Generating Viva questions…")
-
-    # Calls run one after another with a short gap between them. This is gentler
-    # on the free-tier rate limit than firing all three at once. call_gemini also
-    # auto-retries if a rate limit is hit, so generation rarely fails outright.
-    STAGGER = 3  # seconds between each call
-
-    # ── Viva ──
     try:
-        viva_data = call_and_parse(VIVA_PROMPT, material)
-        viva_data = [q for q in viva_data if q.get("question") != "👉 COMPLETE"]
-        st.session_state["viva_data"] = viva_data
-        st.session_state["viva_revealed"] = {}
-        st.session_state["viva_confidence_logged"] = {}
+        if section == "viva":
+            data = call_and_parse(VIVA_PROMPT, material)
+            data = [q for q in data if q.get("question") != "👉 COMPLETE"]
+            st.session_state["viva_data"] = data
+            st.session_state["viva_revealed"] = {}
+            st.session_state["viva_confidence_logged"] = {}
+        elif section == "mcq":
+            st.session_state["mcqs"] = call_and_parse(MCQ_PROMPT, material)
+            st.session_state["mcq_submitted"] = {}
+            st.session_state["mcq_mode"] = None
+            st.session_state["mcq_exam_idx"] = 0
+            st.session_state["exam_start_time"] = None
+        elif section == "anki":
+            st.session_state["anki_result"] = call_gemini(ANKI_PROMPT, material)
+        st.session_state["gen_errors"] = []
     except Exception as e:
-        errors.append(f"Viva: {e}")
-        st.session_state["viva_data"] = []
-    progress.progress(33, text="✅ Viva ready · generating MCQs…")
-    time.sleep(STAGGER)
+        st.session_state["gen_errors"] = [f"{section.upper()}: {e}"]
 
-    # ── MCQ ──
-    try:
-        mcqs = call_and_parse(MCQ_PROMPT, material)
-        st.session_state["mcqs"] = mcqs
-        st.session_state["mcq_submitted"] = {}
-        st.session_state["mcq_mode"] = None
-        st.session_state["mcq_exam_idx"] = 0
-        st.session_state["exam_start_time"] = None
-    except Exception as e:
-        errors.append(f"MCQ: {e}")
-        st.session_state["mcqs"] = []
-    progress.progress(66, text="✅ MCQ ready · generating Anki cards…")
-    time.sleep(STAGGER)
-
-    # ── Anki ──
-    try:
-        st.session_state["anki_result"] = call_gemini(ANKI_PROMPT, material)
-    except Exception as e:
-        errors.append(f"Anki: {e}")
-        st.session_state["anki_result"] = ""
-
-    progress.progress(100, text="✅ All study materials ready!")
-    time.sleep(0.6)
-    progress.empty()
-
-    st.session_state["generated_for"] = topic_name
-    st.session_state["gen_errors"] = errors
-
-    # Save permanently so this document never needs the API again
+    # Persist all three (whatever is currently in state) so nothing is lost
     save_to_cache(
-        doc_hash,
-        topic_name,
+        doc_hash, topic_name,
         st.session_state.get("viva_data", []),
         st.session_state.get("mcqs", []),
         st.session_state.get("anki_result", ""),
@@ -406,33 +375,26 @@ with st.sidebar:
     st.markdown("---")
     st.caption("Built with Streamlit + Gemini")
 
-# ── Load from cache, or generate if this document is new ──────────────────────
-if pdf_text.strip() and st.session_state.get("generated_for") != topic_name:
+# ── On upload: load this document's saved content (if any). Never auto-generate. ──
+# Each tab generates its own content on demand, so an upload costs zero API calls.
+if pdf_text.strip() and st.session_state.get("current_doc") != doc_fingerprint(pdf_text):
     doc_hash = doc_fingerprint(pdf_text)
     cached = load_from_cache(doc_hash)
 
-    if cached:
-        # Already generated before — load instantly, NO API calls
-        st.session_state["viva_data"] = cached["viva"]
-        st.session_state["viva_revealed"] = {}
-        st.session_state["viva_confidence_logged"] = {}
-        st.session_state["mcqs"] = cached["mcqs"]
-        st.session_state["mcq_submitted"] = {}
-        st.session_state["mcq_mode"] = None
-        st.session_state["mcq_exam_idx"] = 0
-        st.session_state["exam_start_time"] = None
-        st.session_state["anki_result"] = cached["anki"]
-        st.session_state["generated_for"] = topic_name
-        st.session_state["gen_errors"] = []
-        st.session_state["loaded_from_cache"] = True
-        st.rerun()
-    else:
-        # New document — generate once, then it's saved forever
-        st.markdown("# 🧠 The Differential")
-        st.markdown(f"**{topic_name}** is new — generating study materials (one time only)…")
-        generate_all(pdf_text, topic_name, doc_hash)
-        st.session_state["loaded_from_cache"] = False
-        st.rerun()
+    st.session_state["current_doc"] = doc_hash
+    st.session_state["viva_data"] = cached["viva"] if cached else []
+    st.session_state["mcqs"] = cached["mcqs"] if cached else []
+    st.session_state["anki_result"] = cached["anki"] if cached else ""
+    # Reset per-document interaction state
+    st.session_state["viva_revealed"] = {}
+    st.session_state["viva_confidence_logged"] = {}
+    st.session_state["mcq_submitted"] = {}
+    st.session_state["mcq_mode"] = None
+    st.session_state["mcq_exam_idx"] = 0
+    st.session_state["exam_start_time"] = None
+    st.session_state["gen_errors"] = []
+    st.session_state["loaded_from_cache"] = bool(cached)
+    st.rerun()
 
 # ── Header ────────────────────────────────────────────────────────────────────
 streak = calculate_streak()
@@ -447,7 +409,7 @@ with col_streak:
         unsafe_allow_html=True
     )
 
-pdf_ready = bool(pdf_text.strip()) and st.session_state.get("generated_for") == topic_name
+pdf_ready = bool(pdf_text.strip())
 
 if pdf_ready and st.session_state.get("loaded_from_cache"):
     st.success("📂 Loaded from saved — no API calls used. This document was generated previously.")
@@ -532,9 +494,13 @@ with tab_viva:
     st.markdown("### Viva Voce")
 
     if not pdf_ready:
-        st.info("👈 Upload a PDF — Viva questions will generate automatically.")
+        st.info("👈 Upload a PDF in the sidebar to begin.")
     elif not st.session_state.get("viva_data"):
-        st.warning("No viva questions yet. Re-upload your PDF to regenerate.")
+        st.markdown("Generate viva questions for this document when you're ready.")
+        if st.button("⚡ Generate Viva Questions", type="primary", key="gen_viva"):
+            with st.spinner("Generating viva questions…"):
+                generate_section("viva", pdf_text, topic_name)
+            st.rerun()
     else:
         viva_data = st.session_state["viva_data"]
         if "viva_revealed" not in st.session_state: st.session_state["viva_revealed"] = {}
@@ -597,9 +563,14 @@ with tab_viva:
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_mcq:
     if not pdf_ready:
-        st.info("👈 Upload a PDF — MCQs will generate automatically.")
+        st.info("👈 Upload a PDF in the sidebar to begin.")
     elif not st.session_state.get("mcqs"):
-        st.warning("No MCQs yet. Re-upload your PDF to regenerate.")
+        st.markdown("### 📝 MCQ Session")
+        st.markdown("Generate clinical MCQs for this document when you're ready.")
+        if st.button("⚡ Generate MCQs", type="primary", key="gen_mcq"):
+            with st.spinner("Generating clinical MCQs…"):
+                generate_section("mcq", pdf_text, topic_name)
+            st.rerun()
     else:
         mcqs = st.session_state["mcqs"]
         mode = st.session_state.get("mcq_mode")
@@ -893,9 +864,13 @@ with tab_anki:
     st.markdown("### 🗂️ Anki Cloze-Deletion Flashcards")
 
     if not pdf_ready:
-        st.info("👈 Upload a PDF — Anki cards will generate automatically.")
+        st.info("👈 Upload a PDF in the sidebar to begin.")
     elif not st.session_state.get("anki_result"):
-        st.warning("No Anki cards yet. Re-upload your PDF to regenerate.")
+        st.markdown("Generate Anki cloze cards for this document when you're ready.")
+        if st.button("⚡ Generate Anki Cards", type="primary", key="gen_anki"):
+            with st.spinner("Generating Anki cards…"):
+                generate_section("anki", pdf_text, topic_name)
+            st.rerun()
     else:
         raw_anki = st.session_state["anki_result"]
         card_lines = [l for l in raw_anki.splitlines() if "|" in l]
