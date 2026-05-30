@@ -8,7 +8,6 @@ import re
 import io
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 from datetime import date, timedelta
 
@@ -169,17 +168,51 @@ def extract_text_from_pdf(f):
     reader = PyPDF2.PdfReader(io.BytesIO(f.read()))
     return "\n\n".join(p.extract_text() for p in reader.pages if p.extract_text())
 
-def call_gemini(prompt_template, material):
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=prompt_template.format(material=material),
-        config=types.GenerateContentConfig(temperature=0.0),
-    )
-    return response.text
+def call_gemini(prompt_template, material, max_retries=3):
+    """Call Gemini. If we hit a rate limit (429), wait and retry automatically."""
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=prompt_template.format(material=material),
+                config=types.GenerateContentConfig(temperature=0.0),
+            )
+            return response.text
+        except Exception as e:
+            msg = str(e).lower()
+            is_rate_limit = "429" in msg or "quota" in msg or "rate" in msg or "resource_exhausted" in msg
+            if is_rate_limit and attempt < max_retries - 1:
+                # Wait progressively longer: 20s, then 40s
+                wait = 20 * (attempt + 1)
+                time.sleep(wait)
+                continue
+            raise
 
 def parse_json(raw):
+    """Parse JSON from model output, tolerating markdown fences and stray text."""
     clean = re.sub(r"```(?:json)?", "", raw).replace("```", "").strip()
-    return json.loads(clean)
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        # Fallback: grab everything between the first [ and the last ]
+        start = clean.find("[")
+        end = clean.rfind("]")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(clean[start:end + 1])
+        raise
+
+def call_and_parse(prompt_template, material, attempts=2):
+    """Call Gemini and parse JSON. If parsing fails, regenerate once more."""
+    last_err = None
+    for _ in range(attempts):
+        raw = call_gemini(prompt_template, material)
+        try:
+            return parse_json(raw)
+        except json.JSONDecodeError as e:
+            last_err = e
+            time.sleep(2)
+            continue
+    raise last_err
 
 def fmt_time(seconds):
     m, s = divmod(int(seconds), 60)
@@ -214,54 +247,56 @@ def build_heatmap_html(days=182):
         cells.append(f'<div class="heatmap-cell" style="background:{color}" title="{d.strftime("%b %d")}: {cnt}"></div>')
     return f'<div class="heatmap-grid">{"".join(cells)}</div>'
 
-# Cap how much PDF text we send — speeds every call and avoids token limits.
-# ~40k characters is plenty for high-yield study material from one document.
-MAX_CHARS = 40000
+# Cap on PDF text sent to the model. 200k chars (~35-40 pages / a full lecture
+# transcript) covers almost any single document while preventing a freak huge
+# upload from blowing the token limit and failing the whole request.
+MAX_CHARS = 200000
 
 def generate_all(pdf_text, topic_name):
     """Generate Viva, MCQ, Anki ALL AT ONCE using parallel threads."""
     errors = []
     material = pdf_text[:MAX_CHARS]
 
-    progress = st.progress(0, text="⚡ Generating Viva, MCQ & Anki in parallel…")
+    progress = st.progress(0, text="⚡ Generating Viva questions…")
 
-    # Fire all three API calls simultaneously
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        future_viva = executor.submit(call_gemini, VIVA_PROMPT, material)
-        future_mcq  = executor.submit(call_gemini, MCQ_PROMPT, material)
-        future_anki = executor.submit(call_gemini, ANKI_PROMPT, material)
+    # Calls run one after another with a short gap between them. This is gentler
+    # on the free-tier rate limit than firing all three at once. call_gemini also
+    # auto-retries if a rate limit is hit, so generation rarely fails outright.
+    STAGGER = 3  # seconds between each call
 
-        # ── Viva result ──
-        try:
-            viva_data = parse_json(future_viva.result())
-            viva_data = [q for q in viva_data if q.get("question") != "👉 COMPLETE"]
-            st.session_state["viva_data"] = viva_data
-            st.session_state["viva_revealed"] = {}
-            st.session_state["viva_confidence_logged"] = {}
-        except Exception as e:
-            errors.append(f"Viva: {e}")
-            st.session_state["viva_data"] = []
-        progress.progress(40, text="⚡ Viva ready · finishing MCQ & Anki…")
+    # ── Viva ──
+    try:
+        viva_data = call_and_parse(VIVA_PROMPT, material)
+        viva_data = [q for q in viva_data if q.get("question") != "👉 COMPLETE"]
+        st.session_state["viva_data"] = viva_data
+        st.session_state["viva_revealed"] = {}
+        st.session_state["viva_confidence_logged"] = {}
+    except Exception as e:
+        errors.append(f"Viva: {e}")
+        st.session_state["viva_data"] = []
+    progress.progress(33, text="✅ Viva ready · generating MCQs…")
+    time.sleep(STAGGER)
 
-        # ── MCQ result ──
-        try:
-            mcqs = parse_json(future_mcq.result())
-            st.session_state["mcqs"] = mcqs
-            st.session_state["mcq_submitted"] = {}
-            st.session_state["mcq_mode"] = None
-            st.session_state["mcq_exam_idx"] = 0
-            st.session_state["exam_start_time"] = None
-        except Exception as e:
-            errors.append(f"MCQ: {e}")
-            st.session_state["mcqs"] = []
-        progress.progress(75, text="⚡ MCQ ready · finishing Anki…")
+    # ── MCQ ──
+    try:
+        mcqs = call_and_parse(MCQ_PROMPT, material)
+        st.session_state["mcqs"] = mcqs
+        st.session_state["mcq_submitted"] = {}
+        st.session_state["mcq_mode"] = None
+        st.session_state["mcq_exam_idx"] = 0
+        st.session_state["exam_start_time"] = None
+    except Exception as e:
+        errors.append(f"MCQ: {e}")
+        st.session_state["mcqs"] = []
+    progress.progress(66, text="✅ MCQ ready · generating Anki cards…")
+    time.sleep(STAGGER)
 
-        # ── Anki result ──
-        try:
-            st.session_state["anki_result"] = future_anki.result()
-        except Exception as e:
-            errors.append(f"Anki: {e}")
-            st.session_state["anki_result"] = ""
+    # ── Anki ──
+    try:
+        st.session_state["anki_result"] = call_gemini(ANKI_PROMPT, material)
+    except Exception as e:
+        errors.append(f"Anki: {e}")
+        st.session_state["anki_result"] = ""
 
     progress.progress(100, text="✅ All study materials ready!")
     time.sleep(0.6)
@@ -294,7 +329,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("**🗓️ Exam Countdown**")
-    exam_date = st.date_input("", value=date.today() + timedelta(days=30),
+    exam_date = st.date_input("Exam date", value=date.today() + timedelta(days=30),
                                min_value=date.today(), label_visibility="collapsed")
     days_left = (exam_date - date.today()).days
     urgency = "#4CAF50" if days_left > 14 else "#C9A84C" if days_left > 7 else "#EF5350"
@@ -570,7 +605,7 @@ with tab_mcq:
             )
 
             if not is_submitted:
-                choice = st.radio("", mcq["options"], key=f"exam_r_{idx}", index=None, label_visibility="collapsed")
+                choice = st.radio("Answer", mcq["options"], key=f"exam_r_{idx}", index=None, label_visibility="collapsed")
 
                 col_prev, col_sub, col_skip = st.columns([1, 2, 1])
                 with col_prev:
@@ -693,7 +728,7 @@ with tab_mcq:
                 )
 
                 if not is_submitted:
-                    choice = st.radio("", mcq["options"], key=f"rev_r_{i}", index=None, label_visibility="collapsed")
+                    choice = st.radio("Answer", mcq["options"], key=f"rev_r_{i}", index=None, label_visibility="collapsed")
                     if st.button("Submit", key=f"rev_s_{i}"):
                         if choice:
                             is_correct = choice.strip()[0].upper() == correct_letter
