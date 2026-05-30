@@ -756,6 +756,7 @@ with tab_mcq:
                     st.session_state["mcq_mode"] = "exam"
                     st.session_state["mcq_exam_idx"] = 0
                     st.session_state["mcq_submitted"] = {}
+                    st.session_state["mcq_marked"] = set()
                     st.session_state["exam_start_time"] = time.time()
                     st.rerun()
 
@@ -773,144 +774,169 @@ with tab_mcq:
                     st.session_state["mcq_submitted"] = {}
                     st.rerun()
 
-        # ── EXAM MODE ─────────────────────────────────────────────────────────
+        # ── EXAM MODE (with question navigator + mark-for-review) ─────────────
         elif mode == "exam":
             submitted = st.session_state.get("mcq_submitted", {})
             idx = st.session_state.get("mcq_exam_idx", 0)
+            marked = st.session_state.setdefault("mcq_marked", set())
             total = len(mcqs)
             elapsed = time.time() - st.session_state.get("exam_start_time", time.time())
 
-            # Top bar
-            pct = ((idx + 1) / total) * 100
-            attempted = len(submitted)
-            correct_n = sum(1 for v in submitted.values() if v["correct"])
+            nav_col, main_col = st.columns([1, 5])
 
-            st.markdown(
-                f'<div style="display:flex;justify-content:space-between;align-items:center;'
-                f'background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
-                f'padding:14px 20px;margin-bottom:16px;">'
-                f'<span style="font-weight:700;color:#C9A84C;font-size:1rem;">{idx+1} / {total}</span>'
-                f'<div style="flex:1;margin:0 20px;background:#2E2A22;border-radius:4px;height:6px;">'
-                f'<div style="width:{pct:.0f}%;background:#C9A84C;height:6px;border-radius:4px;transition:width 0.3s;"></div></div>'
-                f'<span style="font-weight:700;color:#8A8070;font-family:monospace;font-size:1rem;">⏱ {fmt_time(elapsed)}</span>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-
-            if attempted:
-                acc = correct_n / attempted * 100
+            # ── Question navigator ──
+            with nav_col:
                 st.markdown(
-                    f'<div style="display:flex;gap:16px;margin-bottom:12px;">'
-                    f'<span style="background:#1A3020;color:#4CAF50;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">✅ {correct_n} correct</span>'
-                    f'<span style="background:#2A1010;color:#EF5350;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">❌ {attempted-correct_n} incorrect</span>'
-                    f'<span style="background:#252015;color:#C9A84C;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">📊 {acc:.0f}% accuracy</span>'
-                    f'</div>', unsafe_allow_html=True
+                    '<p style="color:#8A8070;font-size:0.7rem;text-transform:uppercase;'
+                    'letter-spacing:0.08em;font-weight:700;margin-bottom:8px;">Items</p>',
+                    unsafe_allow_html=True
+                )
+                for i in range(total):
+                    done = i in submitted
+                    is_mark = i in marked
+                    if i == idx:
+                        label = f"▸ {i+1}"
+                    elif done:
+                        label = f"✓ {i+1}"
+                    elif is_mark:
+                        label = f"⚑ {i+1}"
+                    else:
+                        label = f"  {i+1}"
+                    if st.button(label, key=f"exnav_{i}", use_container_width=True):
+                        st.session_state["mcq_exam_idx"] = i
+                        st.rerun()
+
+            with main_col:
+                # Top bar
+                pct = ((idx + 1) / total) * 100
+                attempted = len(submitted)
+                correct_n = sum(1 for v in submitted.values() if v["correct"])
+
+                st.markdown(
+                    f'<div style="display:flex;justify-content:space-between;align-items:center;'
+                    f'background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+                    f'padding:14px 20px;margin-bottom:16px;">'
+                    f'<span style="font-weight:700;color:#C9A84C;font-size:1rem;">Item {idx+1} / {total}</span>'
+                    f'<div style="flex:1;margin:0 20px;background:#2E2A22;border-radius:4px;height:6px;">'
+                    f'<div style="width:{pct:.0f}%;background:#C9A84C;height:6px;border-radius:4px;transition:width 0.3s;"></div></div>'
+                    f'<span style="font-weight:700;color:#8A8070;font-family:monospace;font-size:1rem;">⏱ {fmt_time(elapsed)}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
                 )
 
-            mcq = mcqs[idx]
-            correct_letter = mcq["correct_answer_letter"].strip().upper()
-            is_submitted = idx in submitted
+                if attempted:
+                    acc = correct_n / attempted * 100
+                    st.markdown(
+                        f'<div style="display:flex;gap:16px;margin-bottom:12px;">'
+                        f'<span style="background:#1A3020;color:#4CAF50;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">✅ {correct_n} correct</span>'
+                        f'<span style="background:#2A1010;color:#EF5350;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">❌ {attempted-correct_n} incorrect</span>'
+                        f'<span style="background:#252015;color:#C9A84C;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">📊 {acc:.0f}% accuracy</span>'
+                        f'</div>', unsafe_allow_html=True
+                    )
 
-            # Question stem — selectable for highlighting
-            st.markdown(
-                f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
-                f'padding:24px 28px;margin-bottom:20px;user-select:text;cursor:text;">'
-                f'<span style="font-size:0.75rem;font-weight:700;color:#C9A84C;'
-                f'text-transform:uppercase;letter-spacing:0.08em;">Question {idx+1}</span>'
-                f'<p style="margin:12px 0 0 0;font-size:1.02rem;line-height:1.75;color:#FAFAF8;">'
-                f'{mcq["question_text"]}</p></div>',
-                unsafe_allow_html=True
-            )
+                mcq = mcqs[idx]
+                correct_letter = mcq["correct_answer_letter"].strip().upper()
+                is_submitted = idx in submitted
 
-            if not is_submitted:
-                choice = st.radio("Answer", mcq["options"], key=f"exam_r_{idx}", index=None, label_visibility="collapsed")
-
-                col_prev, col_sub, col_skip = st.columns([1, 2, 1])
-                with col_prev:
-                    if idx > 0:
-                        if st.button("← Previous", key="ep"):
-                            st.session_state["mcq_exam_idx"] = idx - 1; st.rerun()
-                with col_sub:
-                    if st.button("Submit Answer", key="es", type="primary", use_container_width=True):
-                        if choice:
-                            is_correct = choice.strip()[0].upper() == correct_letter
-                            c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct) VALUES (?,?,?,?,?)",
-                                      (topic_name, mcq["question_text"], choice, correct_letter, is_correct))
-                            conn.commit()
-                            st.session_state["mcq_submitted"][idx] = {"choice": choice, "correct": is_correct}
-                            st.rerun()
-                        else:
-                            st.warning("Select an answer first.")
-                with col_skip:
-                    if idx < total - 1:
-                        if st.button("Skip →", key="ek"):
-                            st.session_state["mcq_exam_idx"] = idx + 1; st.rerun()
-            else:
-                sub = submitted[idx]
-                chosen_letter = sub["choice"].strip()[0].upper()
-
-                # Render option rows with correct/wrong highlighting
-                for opt in mcq["options"]:
-                    opt_letter = opt.strip()[0].upper()
-                    opt_text = opt[2:].strip() if len(opt) > 2 else opt
-
-                    if opt_letter == correct_letter:
-                        row_cls, badge_cls = "opt-row opt-correct", "badge badge-correct"
-                        icon = "✓"
-                    elif opt_letter == chosen_letter and not sub["correct"]:
-                        row_cls, badge_cls = "opt-row opt-wrong", "badge badge-wrong"
-                        icon = "✗"
+                # Mark for review toggle
+                mark_label = "⚑ Unmark" if idx in marked else "⚑ Mark for review"
+                if st.button(mark_label, key=f"exam_mark_{idx}"):
+                    if idx in marked:
+                        marked.discard(idx)
                     else:
-                        row_cls, badge_cls = "opt-row opt-dim", "badge"
-                        icon = opt_letter
+                        marked.add(idx)
+                    st.rerun()
 
-                    st.markdown(
-                        f'<div class="{row_cls}">'
-                        f'<span class="{badge_cls}">{icon}</span>'
-                        f'<span>{opt_text}</span></div>',
-                        unsafe_allow_html=True
-                    )
+                # Question stem — selectable for highlighting
+                st.markdown(
+                    f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+                    f'padding:24px 28px;margin:12px 0 20px 0;user-select:text;cursor:text;">'
+                    f'<span style="font-size:0.75rem;font-weight:700;color:#C9A84C;'
+                    f'text-transform:uppercase;letter-spacing:0.08em;">Question {idx+1}</span>'
+                    f'<p style="margin:12px 0 0 0;font-size:1.02rem;line-height:1.75;color:#FAFAF8;">'
+                    f'{mcq["question_text"]}</p></div>',
+                    unsafe_allow_html=True
+                )
 
-                # Explanation box
-                if sub["correct"]:
-                    st.markdown(
-                        '<div style="background:#1A3020;border:1.5px solid #4CAF50;border-radius:12px;'
-                        'padding:16px 20px;margin:16px 0;">'
-                        '<div style="color:#4CAF50;font-size:0.75rem;font-weight:700;'
-                        'text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">✓ Correct Answer</div>',
-                        unsafe_allow_html=True
-                    )
+                if not is_submitted:
+                    choice = st.radio("Answer", mcq["options"], key=f"exam_r_{idx}", index=None, label_visibility="collapsed")
+
+                    col_prev, col_sub, col_skip = st.columns([1, 2, 1])
+                    with col_prev:
+                        if idx > 0:
+                            if st.button("← Previous", key="ep"):
+                                st.session_state["mcq_exam_idx"] = idx - 1; st.rerun()
+                    with col_sub:
+                        if st.button("Submit Answer", key="es", type="primary", use_container_width=True):
+                            if choice:
+                                is_correct = choice.strip()[0].upper() == correct_letter
+                                c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct) VALUES (?,?,?,?,?)",
+                                          (topic_name, mcq["question_text"], choice, correct_letter, is_correct))
+                                conn.commit()
+                                st.session_state["mcq_submitted"][idx] = {"choice": choice, "correct": is_correct}
+                                st.rerun()
+                            else:
+                                st.warning("Select an answer first.")
+                    with col_skip:
+                        if idx < total - 1:
+                            if st.button("Skip →", key="ek"):
+                                st.session_state["mcq_exam_idx"] = idx + 1; st.rerun()
                 else:
-                    st.markdown(
-                        f'<div style="background:#1E1A10;border:1.5px solid #C9A84C;border-radius:12px;'
-                        f'padding:16px 20px;margin:16px 0;">'
-                        f'<div style="color:#C9A84C;font-size:0.75rem;font-weight:700;'
-                        f'text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">'
-                        f'Correct Answer: {correct_letter}</div>',
-                        unsafe_allow_html=True
-                    )
+                    sub = submitted[idx]
+                    chosen_letter = sub["choice"].strip()[0].upper()
 
-                with st.expander("📖 Full explanation"):
-                    st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
-                    if mcq.get("key_learning_points"):
-                        st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
+                    for opt in mcq["options"]:
+                        opt_letter = opt.strip()[0].upper()
+                        opt_text = opt[2:].strip() if len(opt) > 2 else opt
+                        if opt_letter == correct_letter:
+                            row_cls, badge_cls, icon = "opt-row opt-correct", "badge badge-correct", "✓"
+                        elif opt_letter == chosen_letter and not sub["correct"]:
+                            row_cls, badge_cls, icon = "opt-row opt-wrong", "badge badge-wrong", "✗"
+                        else:
+                            row_cls, badge_cls, icon = "opt-row opt-dim", "badge", opt_letter
+                        st.markdown(
+                            f'<div class="{row_cls}"><span class="{badge_cls}">{icon}</span>'
+                            f'<span>{opt_text}</span></div>',
+                            unsafe_allow_html=True
+                        )
 
-                col_p2, col_n2 = st.columns(2)
-                with col_p2:
-                    if idx > 0:
-                        if st.button("← Previous", key="ep2", use_container_width=True):
-                            st.session_state["mcq_exam_idx"] = idx - 1; st.rerun()
-                with col_n2:
-                    if idx < total - 1:
-                        if st.button("Next →", key="en2", type="primary", use_container_width=True):
-                            st.session_state["mcq_exam_idx"] = idx + 1; st.rerun()
+                    if sub["correct"]:
+                        st.markdown(
+                            '<div style="background:#1A3020;border:1.5px solid #4CAF50;border-radius:12px;'
+                            'padding:12px 18px;margin:16px 0;color:#81C784;font-weight:600;">✓ Correct</div>',
+                            unsafe_allow_html=True
+                        )
                     else:
-                        if st.button("🏁 Finish Session", key="ef", type="primary", use_container_width=True):
-                            st.session_state["mcq_mode"] = "results"; st.rerun()
+                        st.markdown(
+                            f'<div style="background:#1E1A10;border:1.5px solid #C9A84C;border-radius:12px;'
+                            f'padding:12px 18px;margin:16px 0;color:#C9A84C;font-weight:600;">'
+                            f'Correct answer: {correct_letter}</div>',
+                            unsafe_allow_html=True
+                        )
 
-            st.markdown("---")
-            if st.button("← Back to Mode Select", key="back_exam"):
-                st.session_state["mcq_mode"] = None; st.rerun()
+                    with st.expander("📖 Full explanation"):
+                        st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
+                        if mcq.get("key_learning_points"):
+                            st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
+
+                    col_p2, col_n2 = st.columns(2)
+                    with col_p2:
+                        if idx > 0:
+                            if st.button("← Previous", key="ep2", use_container_width=True):
+                                st.session_state["mcq_exam_idx"] = idx - 1; st.rerun()
+                    with col_n2:
+                        if idx < total - 1:
+                            if st.button("Next →", key="en2", type="primary", use_container_width=True):
+                                st.session_state["mcq_exam_idx"] = idx + 1; st.rerun()
+                        else:
+                            if st.button("🏁 Finish Session", key="ef", type="primary", use_container_width=True):
+                                st.session_state["mcq_mode"] = "results"; st.rerun()
+
+                st.markdown("---")
+                if st.button("← Back to Mode Select", key="back_exam"):
+                    st.session_state["mcq_mode"] = None
+                    st.session_state["mcq_marked"] = set()
+                    st.rerun()
 
         # ── REVIEW MODE ───────────────────────────────────────────────────────
         elif mode == "review":
