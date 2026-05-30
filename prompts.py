@@ -58,7 +58,7 @@ MCQ_PROMPT = """
 Imagine you are a medical professor and director of an Australian clinical medicine
 course for first-year intern doctors.
 
-Your task is to generate 50 single-best-answer multiple-choice questions (MCQs)
+Your task is to generate 25 single-best-answer multiple-choice questions (MCQs)
 from ONLY the provided source material, adhering to the following guidelines.
 
 GENERAL GUIDELINES:
@@ -75,7 +75,7 @@ QUESTION CONSTRUCTION:
 - Ensure all distractors are plausible and clinically relevant.
 - Base questions on current clinical guidelines and evidence-based practice.
 
-QUESTION TYPES (mix across the 50 questions):
+QUESTION TYPES (mix across the 25 questions):
   Diagnostic reasoning | Management strategies | Pathophysiological mechanisms |
   Clinical decision-making | Differential diagnosis
 
@@ -97,12 +97,13 @@ Each element must be an object with exactly these keys:
   "question_text"         : full clinical vignette + question (string)
   "options"               : array of exactly 5 strings formatted "A) …", "B) …", … "E) …"
   "correct_answer_letter" : single uppercase letter A–E (string)
-  "answer_table"          : array of 5 objects, one per option, each with:
-                              "option"            : "A"–"E" (string)
-                              "correct"           : true or false (boolean)
-                              "explanation"       : detailed rationale (string)
-                              "clinical_reasoning": why correct / why distractor is wrong (string)
+  "explanation"           : a thorough rationale (3-5 sentences) explaining why the
+                            correct answer is right AND briefly why the key distractors
+                            are wrong (string)
   "key_learning_points"   : critical takeaway sentence(s) (string)
+
+Keep each object compact. Do NOT add extra keys. Ensure the JSON is perfectly valid:
+every string quoted, commas between all elements, no trailing commas.
 
 Source material:
 {material}
