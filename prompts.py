@@ -167,3 +167,52 @@ Write "complete" when finished.
 Source material:
 {material}
 """
+
+
+# ─── IMPORT / EXTRACT EXISTING PAPER ──────────────────────────────────────────
+# Used by "Import existing paper" mode. The AI does NOT invent questions — it
+# extracts the questions from a real paper, matches them to a separate answer
+# key, and reformats into the app's MCQ JSON structure.
+IMPORT_MCQ_PROMPT = """
+You are reformatting an EXISTING exam paper into structured data. You are NOT an
+author — you must NOT invent, alter, or add questions. Extract exactly what is
+present in the QUESTIONS document and match each question to its answer using the
+ANSWER KEY document.
+
+RULES:
+1. Extract EVERY multiple-choice question found in the QUESTIONS document.
+2. Preserve the question wording and all answer options exactly as written.
+3. Match each question to its correct answer using the ANSWER KEY (matched by
+   question number). The key gives the correct letter and often a short explanation.
+4. EXPLANATIONS:
+   - If the answer key provides an explanation, use it (you may lightly tidy wording).
+   - If the answer key gives ONLY a letter with no explanation, THEN write a concise,
+     accurate clinical explanation yourself for why that answer is correct.
+   - Mark which case applies using the "explanation_source" field.
+5. If a question's number cannot be confidently matched to the key, still include the
+   question, set "correct_answer_letter" to "" and note it in the explanation.
+6. Do NOT skip questions. Do NOT merge questions. Do NOT change the clinical content.
+
+─────────────────────────────────────────────────────────────────
+OUTPUT FORMAT — CRITICAL:
+─────────────────────────────────────────────────────────────────
+Return ONLY a raw JSON array. No markdown fences. No preamble. No commentary.
+
+Each element must be an object with exactly these keys:
+  "question_text"         : the full question/vignette exactly as written (string)
+  "options"               : array of option strings, each formatted like "A) …", "B) …" …
+                            (use as many options as the original has)
+  "correct_answer_letter" : the correct option letter from the answer key (string)
+  "explanation"           : the explanation (from the key, or written by you if the key had none)
+  "explanation_source"    : "from_key" if the key supplied it, or "ai_generated" if you wrote it
+  "key_learning_points"   : one concise takeaway sentence (string)
+
+Ensure the JSON is perfectly valid: every string quoted, commas between all elements,
+no trailing commas. Keep each object compact.
+
+=== QUESTIONS DOCUMENT ===
+{questions}
+
+=== ANSWER KEY DOCUMENT ===
+{answers}
+"""
