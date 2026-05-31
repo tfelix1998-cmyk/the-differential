@@ -17,6 +17,10 @@ try:
     from builtin_questions import BUILTIN_BANKS
 except Exception:
     BUILTIN_BANKS = {}
+try:
+    from builtin_questions import BUILTIN_VIVA
+except Exception:
+    BUILTIN_VIVA = {}
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="The Differential", page_icon="🧠", layout="wide")
@@ -279,6 +283,11 @@ def seed_builtin_banks():
 seed_builtin_banks()
 
 
+def list_builtin_viva():
+    """Return {bank_name: [qa, …]} for baked-in viva banks that have content."""
+    return {name: qs for name, qs in BUILTIN_VIVA.items() if qs}
+
+
 def list_topics_with_mcqs():
     """Return [(topic, doc_hash, mcq_count), …] for every saved doc that has MCQs."""
     rows = c.execute("SELECT topic, doc_hash, mcq_json FROM generated_content").fetchall()
@@ -448,6 +457,7 @@ def generate_section(section, pdf_text, topic_name):
             st.session_state["viva_data"] = data
             st.session_state["viva_revealed"] = {}
             st.session_state["viva_confidence_logged"] = {}
+            st.session_state["viva_bank_name"] = None
         elif section == "mcq":
             st.session_state["mcqs"] = call_and_parse(MCQ_PROMPT, material)
             st.session_state["mcq_submitted"] = {}
@@ -721,8 +731,21 @@ with tab_dash:
 with tab_viva:
     st.markdown("### Viva Voce")
 
-    if not pdf_ready:
-        st.info("👈 Viva is available in 'Generate from notes' mode. Switch mode in the sidebar.")
+    # ── Baked-in viva banks: available any time, no upload or API needed ──
+    viva_banks = list_builtin_viva()
+    if viva_banks:
+        with st.expander("📚 Load a saved viva bank", expanded=not st.session_state.get("viva_data")):
+            pick = st.selectbox("Viva bank", ["—"] + list(viva_banks.keys()),
+                                label_visibility="collapsed", key="viva_bank_pick")
+            if pick != "—" and st.button("Load this viva bank", key="load_viva_bank"):
+                st.session_state["viva_data"] = viva_banks[pick]
+                st.session_state["viva_revealed"] = {}
+                st.session_state["viva_confidence_logged"] = {}
+                st.session_state["viva_bank_name"] = pick
+                st.rerun()
+
+    if not pdf_ready and not st.session_state.get("viva_data"):
+        st.info("👈 Generate viva from a document in 'Generate from notes' mode, or load a saved viva bank above.")
     elif not st.session_state.get("viva_data"):
         st.markdown("Generate viva questions for this document when you're ready.")
         if st.button("⚡ Generate Viva Questions", type="primary", key="gen_viva"):
@@ -775,8 +798,9 @@ with tab_viva:
                         st.write("**Rate your confidence:**")
                         c1, c2, c3 = st.columns(3)
                         def _log(idx, level):
+                            vtopic = st.session_state.get("viva_bank_name") or topic_name
                             c.execute("INSERT INTO viva_reviews (topic,question_text,confidence) VALUES (?,?,?)",
-                                      (topic_name, st.session_state["viva_data"][idx]["question"], level))
+                                      (vtopic, st.session_state["viva_data"][idx]["question"], level))
                             conn.commit()
                             st.session_state["viva_confidence_logged"][idx] = level
                         if c1.button("🔴 Hard", key=f"hard_{i}"): _log(i, 1); st.rerun()
