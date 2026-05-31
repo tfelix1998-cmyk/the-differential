@@ -219,6 +219,12 @@ c.execute("""CREATE TABLE IF NOT EXISTS mcq_attempts (
 c.execute("""CREATE TABLE IF NOT EXISTS viva_reviews (
     id INTEGER PRIMARY KEY, topic TEXT, question_text TEXT,
     confidence INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+# Add a `user` column to separate Terry's and Alex's data (idempotent).
+for _tbl in ("mcq_attempts", "viva_reviews"):
+    try:
+        c.execute(f"ALTER TABLE {_tbl} ADD COLUMN user TEXT DEFAULT 'Terry'")
+    except Exception:
+        pass  # column already exists
 # Permanent cache of generated content, keyed by a hash of the PDF text.
 # Once a document is generated, it is saved here forever — re-opening it loads
 # from storage with ZERO API calls.
@@ -232,6 +238,10 @@ c.execute("""CREATE TABLE IF NOT EXISTS mcq_feedback (
     q_hash TEXT PRIMARY KEY, question_text TEXT,
     rating TEXT, note TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+try:
+    c.execute("ALTER TABLE mcq_feedback ADD COLUMN user TEXT DEFAULT 'Terry'")
+except Exception:
+    pass
 conn.commit()
 
 # ── Supabase (permanent cloud storage for the generated-content cache) ─────────
@@ -376,7 +386,9 @@ def list_topics_with_mcqs():
 
 
 def q_hash(question_text):
-    return hashlib.sha256(question_text.encode("utf-8")).hexdigest()
+    # Per-user hash so Terry and Alex keep separate feedback on the same question.
+    user = st.session_state.get("current_user", "Terry")
+    return hashlib.sha256((user + "::" + question_text).encode("utf-8")).hexdigest()
 
 
 def load_feedback(question_text):
@@ -400,17 +412,22 @@ def load_feedback(question_text):
 
 def save_feedback(question_text, rating, note):
     h = q_hash(question_text)
+    user = st.session_state.get("current_user", "Terry")
     if SUPABASE_ENABLED:
         try:
             supabase.table("mcq_feedback").upsert({
                 "q_hash": h, "question_text": question_text,
-                "rating": rating, "note": note,
+                "rating": rating, "note": note, "user": user,
             }).execute()
             return
         except Exception:
             pass
-    c.execute("INSERT OR REPLACE INTO mcq_feedback (q_hash, question_text, rating, note) VALUES (?,?,?,?)",
-              (h, question_text, rating, note))
+    try:
+        c.execute("ALTER TABLE mcq_feedback ADD COLUMN user TEXT DEFAULT 'Terry'")
+    except Exception:
+        pass
+    c.execute("INSERT OR REPLACE INTO mcq_feedback (q_hash, question_text, rating, note, user) VALUES (?,?,?,?,?)",
+              (h, question_text, rating, note, user))
     conn.commit()
 
 
@@ -562,10 +579,16 @@ def fmt_time(seconds):
     if h: return f"{h:02d}:{m:02d}:{s:02d}"
     return f"{m:02d}:{s:02d}"
 
-def calculate_streak():
-    rows = c.execute("""SELECT DISTINCT date(timestamp) as d FROM (
-        SELECT timestamp FROM mcq_attempts UNION ALL SELECT timestamp FROM viva_reviews
-    ) ORDER BY d DESC""").fetchall()
+def calculate_streak(user=None):
+    if user:
+        rows = c.execute("""SELECT DISTINCT date(timestamp) as d FROM (
+            SELECT timestamp FROM mcq_attempts WHERE user=? UNION ALL
+            SELECT timestamp FROM viva_reviews WHERE user=?
+        ) ORDER BY d DESC""", (user, user)).fetchall()
+    else:
+        rows = c.execute("""SELECT DISTINCT date(timestamp) as d FROM (
+            SELECT timestamp FROM mcq_attempts UNION ALL SELECT timestamp FROM viva_reviews
+        ) ORDER BY d DESC""").fetchall()
     if not rows: return 0
     streak, today = 0, date.today()
     for i, (d_str,) in enumerate(rows):
@@ -574,12 +597,19 @@ def calculate_streak():
         else: break
     return streak
 
-def build_heatmap_html(days=182):
+def build_heatmap_html(days=182, user=None):
     today = date.today()
     activity = {}
-    for d_str, cnt in c.execute("""SELECT date(timestamp), COUNT(*) FROM (
-        SELECT timestamp FROM mcq_attempts UNION ALL SELECT timestamp FROM viva_reviews
-    ) GROUP BY date(timestamp)""").fetchall():
+    if user:
+        _rows = c.execute("""SELECT date(timestamp), COUNT(*) FROM (
+            SELECT timestamp FROM mcq_attempts WHERE user=? UNION ALL
+            SELECT timestamp FROM viva_reviews WHERE user=?
+        ) GROUP BY date(timestamp)""", (user, user)).fetchall()
+    else:
+        _rows = c.execute("""SELECT date(timestamp), COUNT(*) FROM (
+            SELECT timestamp FROM mcq_attempts UNION ALL SELECT timestamp FROM viva_reviews
+        ) GROUP BY date(timestamp)""").fetchall()
+    for d_str, cnt in _rows:
         activity[d_str] = cnt
     cells = []
     for i in range(days - 1, -1, -1):
@@ -686,6 +716,10 @@ with st.sidebar:
         st.caption("🟢 Permanent storage active")
     else:
         st.caption("🟡 Local storage (temporary)")
+
+    # ── Who's studying? Separates progress between users (banks stay shared) ──
+    current_user = st.selectbox("👤 Studying as", ["Terry", "Alex"],
+                                key="current_user")
     st.markdown("---")
 
     app_mode = st.radio(
@@ -786,7 +820,7 @@ if import_ready:
         st.rerun()
 
 # ── Header ────────────────────────────────────────────────────────────────────
-streak = calculate_streak()
+streak = calculate_streak(st.session_state.get("current_user", "Terry"))
 col_title, col_streak = st.columns([4, 1])
 with col_title:
     st.markdown("# 🧠 The Differential")
@@ -818,15 +852,16 @@ tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock = st.tabs(
 # DASHBOARD TAB
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_dash:
-    st.markdown("### Study Dashboard")
+    du = st.session_state.get("current_user", "Terry")
+    st.markdown(f"### Study Dashboard — {du}")
 
-    total_mcqs   = c.execute("SELECT COUNT(*) FROM mcq_attempts").fetchone()[0]
-    correct_mcqs = c.execute("SELECT COUNT(*) FROM mcq_attempts WHERE is_correct=1").fetchone()[0]
+    total_mcqs   = c.execute("SELECT COUNT(*) FROM mcq_attempts WHERE user=?", (du,)).fetchone()[0]
+    correct_mcqs = c.execute("SELECT COUNT(*) FROM mcq_attempts WHERE is_correct=1 AND user=?", (du,)).fetchone()[0]
     accuracy     = (correct_mcqs / total_mcqs * 100) if total_mcqs else 0
-    total_viva   = c.execute("SELECT COUNT(*) FROM viva_reviews").fetchone()[0]
-    easy_n  = c.execute("SELECT COUNT(*) FROM viva_reviews WHERE confidence=3").fetchone()[0]
-    good_n  = c.execute("SELECT COUNT(*) FROM viva_reviews WHERE confidence=2").fetchone()[0]
-    hard_n  = c.execute("SELECT COUNT(*) FROM viva_reviews WHERE confidence=1").fetchone()[0]
+    total_viva   = c.execute("SELECT COUNT(*) FROM viva_reviews WHERE user=?", (du,)).fetchone()[0]
+    easy_n  = c.execute("SELECT COUNT(*) FROM viva_reviews WHERE confidence=3 AND user=?", (du,)).fetchone()[0]
+    good_n  = c.execute("SELECT COUNT(*) FROM viva_reviews WHERE confidence=2 AND user=?", (du,)).fetchone()[0]
+    hard_n  = c.execute("SELECT COUNT(*) FROM viva_reviews WHERE confidence=1 AND user=?", (du,)).fetchone()[0]
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("MCQs Attempted",      total_mcqs)
@@ -840,12 +875,12 @@ with tab_dash:
         if SUPABASE_ENABLED:
             try:
                 res = supabase.table("mcq_feedback").select(
-                    "question_text, rating, note").execute()
+                    "question_text, rating, note").eq("user", du).execute()
                 return [(r.get("question_text"), r.get("rating"), r.get("note"))
                         for r in res.data]
             except Exception:
                 pass
-        return c.execute("SELECT question_text, rating, note FROM mcq_feedback").fetchall()
+        return c.execute("SELECT question_text, rating, note FROM mcq_feedback WHERE user=?", (du,)).fetchall()
 
     flagged = [f for f in _load_flagged()
                if (f[1] == "down") or (f[2] and f[2].strip())]
@@ -863,7 +898,7 @@ with tab_dash:
     st.markdown("#### 📅 Activity Heatmap")
     st.markdown(
         '<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;padding:20px 24px;">'
-        + build_heatmap_html() +
+        + build_heatmap_html(user=du) +
         '<div style="font-size:0.75rem;color:#8A8070;margin-top:6px;">⬜ None &nbsp; 🟩 1–2 &nbsp; 🟩 3–7 &nbsp; 🟩 8+</div>'
         '</div>', unsafe_allow_html=True
     )
@@ -872,7 +907,7 @@ with tab_dash:
     col_l, col_r = st.columns(2)
     with col_l:
         st.markdown("#### 📈 MCQ Accuracy Over Time")
-        history = c.execute("SELECT timestamp, is_correct FROM mcq_attempts ORDER BY timestamp ASC").fetchall()
+        history = c.execute("SELECT timestamp, is_correct FROM mcq_attempts WHERE user=? ORDER BY timestamp ASC", (du,)).fetchall()
         if history:
             daily = {}
             for ts, ok in history:
@@ -894,7 +929,7 @@ with tab_dash:
             st.markdown('<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;padding:40px;text-align:center;color:#8A8070;">Rate viva confidence to see this</div>', unsafe_allow_html=True)
 
     st.markdown("#### 🗒️ Recent MCQ Attempts")
-    recent = c.execute("SELECT timestamp, topic, is_correct FROM mcq_attempts ORDER BY timestamp DESC LIMIT 15").fetchall()
+    recent = c.execute("SELECT timestamp, topic, is_correct FROM mcq_attempts WHERE user=? ORDER BY timestamp DESC LIMIT 15", (du,)).fetchall()
     if recent:
         rdf = pd.DataFrame(recent, columns=["Time","Topic","Correct"])
         rdf["Result"] = rdf["Correct"].map({1:"✅ Correct", 0:"❌ Incorrect"})
@@ -976,8 +1011,8 @@ with tab_viva:
                         c1, c2, c3 = st.columns(3)
                         def _log(idx, level):
                             vtopic = st.session_state.get("viva_bank_name") or topic_name
-                            c.execute("INSERT INTO viva_reviews (topic,question_text,confidence) VALUES (?,?,?)",
-                                      (vtopic, st.session_state["viva_data"][idx]["question"], level))
+                            c.execute("INSERT INTO viva_reviews (topic,question_text,confidence,user) VALUES (?,?,?,?)",
+                                      (vtopic, st.session_state["viva_data"][idx]["question"], level, st.session_state.get("current_user","Terry")))
                             conn.commit()
                             st.session_state["viva_confidence_logged"][idx] = level
                         if c1.button("🔴 Hard", key=f"hard_{i}"): _log(i, 1); st.rerun()
@@ -1156,8 +1191,8 @@ with tab_mcq:
                         if st.button("Submit Answer", key="es", type="primary", use_container_width=True):
                             if choice:
                                 is_correct = choice.strip()[0].upper() == correct_letter
-                                c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct) VALUES (?,?,?,?,?)",
-                                          (topic_name, mcq["question_text"], choice, correct_letter, is_correct))
+                                c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct,user) VALUES (?,?,?,?,?,?)",
+                                          (topic_name, mcq["question_text"], choice, correct_letter, is_correct, st.session_state.get("current_user","Terry")))
                                 conn.commit()
                                 st.session_state["mcq_submitted"][idx] = {"choice": choice, "correct": is_correct}
                                 st.rerun()
@@ -1261,8 +1296,8 @@ with tab_mcq:
                     if st.button("Submit", key=f"rev_s_{i}"):
                         if choice:
                             is_correct = choice.strip()[0].upper() == correct_letter
-                            c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct) VALUES (?,?,?,?,?)",
-                                      (topic_name, mcq["question_text"], choice, correct_letter, is_correct))
+                            c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct,user) VALUES (?,?,?,?,?,?)",
+                                      (topic_name, mcq["question_text"], choice, correct_letter, is_correct, st.session_state.get("current_user","Terry")))
                             conn.commit()
                             st.session_state["mcq_submitted"][i] = {"choice": choice, "correct": is_correct}
                             st.rerun()
@@ -1509,8 +1544,8 @@ with tab_mock:
                 if st.button("Submit Answer", key=f"mock_sub_{idx}", type="primary"):
                     if choice:
                         ok = choice.strip()[0].upper() == correct_letter
-                        c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct) VALUES (?,?,?,?,?)",
-                                  ("Mock Exam", mcq["question_text"], choice, correct_letter, ok))
+                        c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct,user) VALUES (?,?,?,?,?,?)",
+                                  ("Mock Exam", mcq["question_text"], choice, correct_letter, ok, st.session_state.get("current_user","Terry")))
                         conn.commit()
                         st.session_state["mock_submitted"][idx] = {"choice": choice, "correct": ok}
                         st.rerun()
