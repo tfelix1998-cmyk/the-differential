@@ -76,3 +76,42 @@ BUILTIN_BANKS = {
     # "Antibiotics High-Yield":     [ { ... }, { ... } ],
 
 }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# BUILTIN_VIVA — baked-in VIVA (open Q&A) banks
+#
+# Viva questions are open-ended, not multiple choice. Each object has just:
+#   {
+#     "question": "What is the management of a tension pneumothorax?",
+#     "answer": "Immediate needle decompression...\nThen chest drain...\n..."
+#   }
+#
+# In the model answer, use \n to separate points — each line becomes a bullet
+# in the app's reveal panel.
+#
+# These appear in the Viva tab via a picker, load instantly, and cost no API calls.
+# ═════════════════════════════════════════════════════════════════════════════
+
+BUILTIN_VIVA = {
+
+    # ── Example viva bank — delete or replace with your own ───────────────────
+    "Example Viva (Trauma)": [
+        {
+            "question": "Outline your immediate approach to a haemodynamically unstable trauma patient.",
+            "answer": (
+                "Use a structured ATLS primary survey: A-E.\n"
+                "Airway with C-spine control — assess patency, protect the cervical spine.\n"
+                "Breathing — exclude tension pneumothorax, open chest wound, massive haemothorax.\n"
+                "Circulation — control external haemorrhage, two large-bore IVs, assess for shock.\n"
+                "Disability — GCS, pupils, glucose.\n"
+                "Exposure — fully expose while preventing hypothermia.\n"
+                "Treat life threats as you find them, before moving on."
+            ),
+        },
+        # ← add more {"question": ..., "answer": ...} objects here
+    ],
+
+    # "Antibiotics Viva": [ { "question": ..., "answer": ... } ],
+
+}
