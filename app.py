@@ -228,6 +228,25 @@ c.execute("""CREATE TABLE IF NOT EXISTS generated_content (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
 conn.commit()
 
+# ── Supabase (permanent cloud storage for the generated-content cache) ─────────
+# If Supabase is configured and reachable, the cache lives there permanently and
+# survives app restarts. If anything is missing or fails, we silently fall back
+# to the local SQLite cache above, so the app ALWAYS works.
+SUPABASE_ENABLED = False
+supabase = None
+try:
+    _sb_url = st.secrets.get("SUPABASE_URL", "")
+    _sb_key = st.secrets.get("SUPABASE_KEY", "")
+    if _sb_url and _sb_key:
+        from supabase import create_client
+        supabase = create_client(_sb_url, _sb_key)
+        # Probe once so a misconfiguration falls back instead of erroring later
+        supabase.table("generated_content").select("doc_hash").limit(1).execute()
+        SUPABASE_ENABLED = True
+except Exception:
+    SUPABASE_ENABLED = False
+    supabase = None
+
 
 def doc_fingerprint(pdf_text):
     """A stable hash of the document text — identifies a document uniquely."""
@@ -236,6 +255,21 @@ def doc_fingerprint(pdf_text):
 
 def load_from_cache(doc_hash):
     """Return saved generation for this document, or None if not generated yet."""
+    if SUPABASE_ENABLED:
+        try:
+            res = supabase.table("generated_content").select(
+                "viva_json, mcq_json, anki_text"
+            ).eq("doc_hash", doc_hash).limit(1).execute()
+            if res.data:
+                row = res.data[0]
+                return {
+                    "viva": json.loads(row["viva_json"]) if row.get("viva_json") else [],
+                    "mcqs": json.loads(row["mcq_json"]) if row.get("mcq_json") else [],
+                    "anki": row.get("anki_text") or "",
+                }
+            return None
+        except Exception:
+            pass  # fall through to SQLite
     row = c.execute(
         "SELECT viva_json, mcq_json, anki_text FROM generated_content WHERE doc_hash=?",
         (doc_hash,)
@@ -252,6 +286,18 @@ def load_from_cache(doc_hash):
 
 def save_to_cache(doc_hash, topic, viva, mcqs, anki):
     """Persist a document's generated content permanently."""
+    if SUPABASE_ENABLED:
+        try:
+            supabase.table("generated_content").upsert({
+                "doc_hash": doc_hash,
+                "topic": topic,
+                "viva_json": json.dumps(viva),
+                "mcq_json": json.dumps(mcqs),
+                "anki_text": anki,
+            }).execute()
+            return
+        except Exception:
+            pass  # fall through to SQLite
     c.execute(
         "INSERT OR REPLACE INTO generated_content "
         "(doc_hash, topic, viva_json, mcq_json, anki_text) VALUES (?,?,?,?,?)",
@@ -267,11 +313,23 @@ def seed_builtin_banks():
             continue
         # Stable hash from the bank NAME so re-runs don't create duplicates
         h = hashlib.sha256(("BUILTIN::" + name).encode("utf-8")).hexdigest()
+        new_json = json.dumps(questions)
+        if SUPABASE_ENABLED:
+            try:
+                res = supabase.table("generated_content").select(
+                    "mcq_json").eq("doc_hash", h).limit(1).execute()
+                existing = res.data[0]["mcq_json"] if res.data else None
+                if existing != new_json:
+                    supabase.table("generated_content").upsert({
+                        "doc_hash": h, "topic": name,
+                        "viva_json": json.dumps([]), "mcq_json": new_json, "anki_text": "",
+                    }).execute()
+                continue
+            except Exception:
+                pass  # fall through to SQLite for this bank
         existing = c.execute(
             "SELECT mcq_json FROM generated_content WHERE doc_hash=?", (h,)
         ).fetchone()
-        # Only (re)write if absent or the count changed — keeps it fresh but cheap
-        new_json = json.dumps(questions)
         if not existing or existing[0] != new_json:
             c.execute(
                 "INSERT OR REPLACE INTO generated_content "
@@ -290,7 +348,16 @@ def list_builtin_viva():
 
 def list_topics_with_mcqs():
     """Return [(topic, doc_hash, mcq_count), …] for every saved doc that has MCQs."""
-    rows = c.execute("SELECT topic, doc_hash, mcq_json FROM generated_content").fetchall()
+    rows = []
+    if SUPABASE_ENABLED:
+        try:
+            res = supabase.table("generated_content").select(
+                "topic, doc_hash, mcq_json").execute()
+            rows = [(r.get("topic"), r.get("doc_hash"), r.get("mcq_json")) for r in res.data]
+        except Exception:
+            rows = []
+    if not rows:
+        rows = c.execute("SELECT topic, doc_hash, mcq_json FROM generated_content").fetchall()
     out = []
     for topic, doc_hash, mcq_json in rows:
         try:
@@ -303,6 +370,15 @@ def list_topics_with_mcqs():
 
 
 def get_mcqs_for_hash(doc_hash):
+    if SUPABASE_ENABLED:
+        try:
+            res = supabase.table("generated_content").select(
+                "mcq_json").eq("doc_hash", doc_hash).limit(1).execute()
+            if res.data and res.data[0].get("mcq_json"):
+                return json.loads(res.data[0]["mcq_json"])
+            return []
+        except Exception:
+            pass
     row = c.execute("SELECT mcq_json FROM generated_content WHERE doc_hash=?", (doc_hash,)).fetchone()
     if not row or not row[0]:
         return []
@@ -534,6 +610,10 @@ def render_image(mcq):
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🧠 The Differential")
+    if SUPABASE_ENABLED:
+        st.caption("🟢 Permanent storage active")
+    else:
+        st.caption("🟡 Local storage (temporary)")
     st.markdown("---")
 
     app_mode = st.radio(
