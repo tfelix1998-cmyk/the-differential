@@ -226,6 +226,12 @@ c.execute("""CREATE TABLE IF NOT EXISTS generated_content (
     doc_hash TEXT PRIMARY KEY, topic TEXT,
     viva_json TEXT, mcq_json TEXT, anki_text TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+# Per-question feedback: a thumbs rating and a free-text note, keyed by a hash
+# of the question text so it follows the question regardless of which bank/mode.
+c.execute("""CREATE TABLE IF NOT EXISTS mcq_feedback (
+    q_hash TEXT PRIMARY KEY, question_text TEXT,
+    rating TEXT, note TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
 conn.commit()
 
 # ── Supabase (permanent cloud storage for the generated-content cache) ─────────
@@ -367,6 +373,72 @@ def list_topics_with_mcqs():
         if n > 0:
             out.append((topic, doc_hash, n))
     return sorted(out, key=lambda x: x[0].lower())
+
+
+def q_hash(question_text):
+    return hashlib.sha256(question_text.encode("utf-8")).hexdigest()
+
+
+def load_feedback(question_text):
+    """Return {'rating': ..., 'note': ...} for a question, or defaults."""
+    h = q_hash(question_text)
+    if SUPABASE_ENABLED:
+        try:
+            res = supabase.table("mcq_feedback").select(
+                "rating, note").eq("q_hash", h).limit(1).execute()
+            if res.data:
+                return {"rating": res.data[0].get("rating") or "",
+                        "note": res.data[0].get("note") or ""}
+            return {"rating": "", "note": ""}
+        except Exception:
+            pass
+    row = c.execute("SELECT rating, note FROM mcq_feedback WHERE q_hash=?", (h,)).fetchone()
+    if row:
+        return {"rating": row[0] or "", "note": row[1] or ""}
+    return {"rating": "", "note": ""}
+
+
+def save_feedback(question_text, rating, note):
+    h = q_hash(question_text)
+    if SUPABASE_ENABLED:
+        try:
+            supabase.table("mcq_feedback").upsert({
+                "q_hash": h, "question_text": question_text,
+                "rating": rating, "note": note,
+            }).execute()
+            return
+        except Exception:
+            pass
+    c.execute("INSERT OR REPLACE INTO mcq_feedback (q_hash, question_text, rating, note) VALUES (?,?,?,?)",
+              (h, question_text, rating, note))
+    conn.commit()
+
+
+def render_feedback(mcq, key_prefix):
+    """A 👍/👎 + notes panel for a question. Saves permanently."""
+    qtext = mcq.get("question_text", "")
+    fb = load_feedback(qtext)
+    st.markdown("**Your feedback**")
+    col_up, col_down, col_status = st.columns([1, 1, 4])
+    with col_up:
+        if st.button("👍", key=f"{key_prefix}_up"):
+            save_feedback(qtext, "up", fb["note"])
+            st.rerun()
+    with col_down:
+        if st.button("👎", key=f"{key_prefix}_down"):
+            save_feedback(qtext, "down", fb["note"])
+            st.rerun()
+    with col_status:
+        if fb["rating"] == "up":
+            st.caption("Rated 👍")
+        elif fb["rating"] == "down":
+            st.caption("Rated 👎 — flagged to improve")
+    note = st.text_area("Notes", value=fb["note"], key=f"{key_prefix}_note",
+                        placeholder="Add a note to improve this question later…",
+                        label_visibility="collapsed")
+    if st.button("💾 Save note", key=f"{key_prefix}_savenote"):
+        save_feedback(qtext, fb["rating"], note)
+        st.success("Saved")
 
 
 def get_mcqs_for_hash(doc_hash):
@@ -763,6 +835,31 @@ with tab_dash:
     m4.metric("Viva Reviews",        total_viva)
     st.markdown("")
 
+    # ── Flagged questions: things you rated 👎 or left notes on ──
+    def _load_flagged():
+        if SUPABASE_ENABLED:
+            try:
+                res = supabase.table("mcq_feedback").select(
+                    "question_text, rating, note").execute()
+                return [(r.get("question_text"), r.get("rating"), r.get("note"))
+                        for r in res.data]
+            except Exception:
+                pass
+        return c.execute("SELECT question_text, rating, note FROM mcq_feedback").fetchall()
+
+    flagged = [f for f in _load_flagged()
+               if (f[1] == "down") or (f[2] and f[2].strip())]
+    if flagged:
+        with st.expander(f"🚩 Flagged questions to improve ({len(flagged)})"):
+            for qt, rating, note in flagged:
+                tag = "👎" if rating == "down" else "📝"
+                short = qt if len(qt) <= 110 else qt[:107] + "…"
+                st.markdown(f"{tag} **{short}**")
+                if note and note.strip():
+                    st.caption(f"Note: {note}")
+                st.markdown("")
+    st.markdown("")
+
     st.markdown("#### 📅 Activity Heatmap")
     st.markdown(
         '<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;padding:20px 24px;">'
@@ -1107,6 +1204,8 @@ with tab_mcq:
                         st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
                         if mcq.get("key_learning_points"):
                             st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
+                        st.markdown("---")
+                        render_feedback(mcq, f"fb_exam_{idx}")
 
                     col_p2, col_n2 = st.columns(2)
                     with col_p2:
@@ -1187,6 +1286,8 @@ with tab_mcq:
                         st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
                         if mcq.get("key_learning_points"):
                             st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
+                        st.markdown("---")
+                        render_feedback(mcq, f"fb_review_{i}")
 
                 st.markdown('<hr style="margin:20px 0;">', unsafe_allow_html=True)
 
@@ -1434,6 +1535,8 @@ with tab_mock:
                     st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
                     if mcq.get("key_learning_points"):
                         st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
+                    st.markdown("---")
+                    render_feedback(mcq, f"fb_mock_{idx}")
 
             # Navigation
             st.markdown("")
