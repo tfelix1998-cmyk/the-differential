@@ -13,6 +13,10 @@ import pandas as pd
 from datetime import date, timedelta
 
 from prompts import VIVA_PROMPT, MCQ_PROMPT, ANKI_PROMPT, IMPORT_MCQ_PROMPT
+try:
+    from builtin_questions import BUILTIN_BANKS
+except Exception:
+    BUILTIN_BANKS = {}
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="The Differential", page_icon="🧠", layout="wide")
@@ -252,6 +256,29 @@ def save_to_cache(doc_hash, topic, viva, mcqs, anki):
     conn.commit()
 
 
+def seed_builtin_banks():
+    """Load any baked-in banks into the cache so they appear everywhere automatically."""
+    for name, questions in BUILTIN_BANKS.items():
+        if not questions:
+            continue
+        # Stable hash from the bank NAME so re-runs don't create duplicates
+        h = hashlib.sha256(("BUILTIN::" + name).encode("utf-8")).hexdigest()
+        existing = c.execute(
+            "SELECT mcq_json FROM generated_content WHERE doc_hash=?", (h,)
+        ).fetchone()
+        # Only (re)write if absent or the count changed — keeps it fresh but cheap
+        new_json = json.dumps(questions)
+        if not existing or existing[0] != new_json:
+            c.execute(
+                "INSERT OR REPLACE INTO generated_content "
+                "(doc_hash, topic, viva_json, mcq_json, anki_text) VALUES (?,?,?,?,?)",
+                (h, name, json.dumps([]), new_json, "")
+            )
+    conn.commit()
+
+seed_builtin_banks()
+
+
 def list_topics_with_mcqs():
     """Return [(topic, doc_hash, mcq_count), …] for every saved doc that has MCQs."""
     rows = c.execute("SELECT topic, doc_hash, mcq_json FROM generated_content").fetchall()
@@ -484,6 +511,15 @@ def import_paper(questions_text, answers_text, topic_name, doc_hash):
         st.session_state.get("mcqs", []),
         st.session_state.get("anki_result", ""),
     )
+
+def render_image(mcq):
+    """Show an image above a question if it has a non-empty image_url."""
+    url = (mcq.get("image_url") or "").strip()
+    if url:
+        try:
+            st.image(url, use_container_width=True)
+        except Exception:
+            st.caption("(image could not be loaded)")
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -896,6 +932,7 @@ with tab_mcq:
                     st.rerun()
 
                 # Question stem — selectable for highlighting
+                render_image(mcq)
                 st.markdown(
                     f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
                     f'padding:24px 28px;margin:12px 0 20px 0;user-select:text;cursor:text;">'
@@ -1005,6 +1042,7 @@ with tab_mcq:
                 if i in submitted:
                     status = " ✅" if submitted[i]["correct"] else " ❌"
 
+                render_image(mcq)
                 st.markdown(
                     f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
                     f'padding:20px 24px;margin-bottom:8px;user-select:text;cursor:text;">'
@@ -1248,6 +1286,7 @@ with tab_mock:
                 st.rerun()
 
             # Question stem (highlightable)
+            render_image(mcq)
             st.markdown(
                 f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
                 f'padding:24px 28px;margin:12px 0 20px 0;user-select:text;cursor:text;">'
