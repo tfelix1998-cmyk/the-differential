@@ -1196,9 +1196,12 @@ with tab_mock:
 
             col_n, col_mode = st.columns(2)
             with col_n:
-                if pool_size > 0:
+                if pool_size > 1:
                     num_q = st.slider("Number of questions", min_value=1,
                                       max_value=pool_size, value=min(20, pool_size))
+                elif pool_size == 1:
+                    num_q = 1
+                    st.caption("1 question available.")
                 else:
                     st.caption("Select at least one topic to continue.")
                     num_q = 0
