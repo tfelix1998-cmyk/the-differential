@@ -363,12 +363,57 @@ def list_builtin_viva():
 
 
 def split_category(name):
-    """Free-form categories via a 'Category :: Name' convention in the bank name.
-    Returns (category, display_name). No separator -> 'Uncategorised'."""
+    """Free-form hierarchy via a 'Category :: Subtopic' convention in the name.
+    Returns (category, display_name). No separator -> 'Uncategorised'.
+    If three+ parts, first is category and the rest joins as the display."""
     if name and " :: " in name:
-        cat, _, disp = name.partition(" :: ")
-        return cat.strip() or "Uncategorised", disp.strip() or name
+        parts = [p.strip() for p in name.split(" :: ")]
+        cat = parts[0] or "Uncategorised"
+        disp = " :: ".join(parts[1:]) or name
+        return cat, disp
     return "Uncategorised", name
+
+
+def list_topics_with_viva():
+    """Return [(topic, doc_hash, viva_count), …] for every saved doc that has viva."""
+    rows = []
+    if SUPABASE_ENABLED:
+        try:
+            res = supabase.table("generated_content").select(
+                "topic, doc_hash, viva_json").execute()
+            rows = [(r.get("topic"), r.get("doc_hash"), r.get("viva_json")) for r in res.data]
+        except Exception:
+            rows = []
+    if not rows:
+        rows = c.execute("SELECT topic, doc_hash, viva_json FROM generated_content").fetchall()
+    out = []
+    for topic, doc_hash, viva_json in rows:
+        try:
+            n = len(json.loads(viva_json)) if viva_json else 0
+        except Exception:
+            n = 0
+        if n > 0:
+            out.append((topic, doc_hash, n))
+    return sorted(out, key=lambda x: x[0].lower())
+
+
+def get_viva_for_hash(doc_hash):
+    if SUPABASE_ENABLED:
+        try:
+            res = supabase.table("generated_content").select(
+                "viva_json").eq("doc_hash", doc_hash).limit(1).execute()
+            if res.data and res.data[0].get("viva_json"):
+                return json.loads(res.data[0]["viva_json"])
+            return []
+        except Exception:
+            pass
+    row = c.execute("SELECT viva_json FROM generated_content WHERE doc_hash=?", (doc_hash,)).fetchone()
+    if not row or not row[0]:
+        return []
+    try:
+        return json.loads(row[0])
+    except Exception:
+        return []
 
 
 def list_topics_with_mcqs():
@@ -745,13 +790,22 @@ with st.sidebar:
     if app_mode == "📝 Generate from notes":
         st.markdown("**📄 Study Material**")
         uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"], label_visibility="collapsed")
+        # Optional organisation: category + subtopic, used to file the content.
+        gen_category = st.text_input("Category", placeholder="e.g. ICU Week 8", key="gen_category")
+        gen_subtopic = st.text_input("Subtopic", placeholder="e.g. ARDS", key="gen_subtopic")
         if uploaded_file:
             with st.spinner("Reading PDF…"):
                 pdf_text = extract_text_from_pdf(uploaded_file)
-            topic_name = uploaded_file.name
+            # Build a hierarchical topic name when category/subtopic are given,
+            # otherwise fall back to the filename.
+            cat = gen_category.strip()
+            sub = gen_subtopic.strip() or uploaded_file.name
+            topic_name = f"{cat} :: {sub}" if cat else sub
             if pdf_text.strip():
                 st.success(f"✅ {uploaded_file.name}")
                 st.caption(f"{len(pdf_text):,} characters")
+                if cat:
+                    st.caption(f"Filed under: {cat} › {sub}")
                 with st.expander("Preview"):
                     st.text(pdf_text[:1200] + ("…" if len(pdf_text) > 1200 else ""))
             else:
@@ -759,13 +813,17 @@ with st.sidebar:
     else:
         st.markdown("**📥 Import Existing Paper**")
         st.caption("Upload the questions, then the answer key.")
+        imp_category = st.text_input("Category", placeholder="e.g. Past Papers 2024", key="imp_category")
+        imp_subtopic = st.text_input("Subtopic", placeholder="e.g. Respiratory", key="imp_subtopic")
         q_file = st.file_uploader("Questions PDF", type=["pdf"], key="imp_q")
         a_file = st.file_uploader("Answer key PDF", type=["pdf"], key="imp_a")
         if q_file:
             with st.spinner("Reading questions…"):
                 import_questions_text = extract_text_from_pdf(q_file)
             st.success(f"✅ Questions: {q_file.name}")
-            topic_name = q_file.name
+            _icat = imp_category.strip()
+            _isub = imp_subtopic.strip() or q_file.name
+            topic_name = f"{_icat} :: {_isub}" if _icat else _isub
         if a_file:
             with st.spinner("Reading answer key…"):
                 import_answers_text = extract_text_from_pdf(a_file)
@@ -952,38 +1010,51 @@ with tab_dash:
 with tab_viva:
     st.markdown("### Viva Voce")
 
-    # ── Baked-in viva banks: available any time, no upload or API needed ──
-    viva_banks = list_builtin_viva()
-    if viva_banks:
+    # ── Saved viva banks: baked-in banks AND anything you've generated ──
+    builtin_viva = list_builtin_viva()
+    cached_viva = list_topics_with_viva()  # [(topic, doc_hash, n), …]
+    have_any_viva = bool(builtin_viva) or bool(cached_viva)
+    if have_any_viva:
         with st.expander("📚 Load a saved viva bank", expanded=not st.session_state.get("viva_data")):
-            # Group banks by category (free-form via "Category :: Name")
-            viva_cats = {}
-            for full_name in viva_banks.keys():
+            # Unified entries: (category, display, source, ref, count)
+            #   source "builtin" -> ref is the bank name; "cache" -> ref is doc_hash
+            entries = []
+            for full_name, qs in builtin_viva.items():
                 cat, disp = split_category(full_name)
-                viva_cats.setdefault(cat, []).append((disp, full_name))
-            cat_options = ["All categories"] + sorted(viva_cats.keys())
-            chosen_cat = st.selectbox("Category", cat_options, key="viva_cat_filter")
+                entries.append((cat, disp, "builtin", full_name, len(qs)))
+            for topic, doc_hash, n in cached_viva:
+                cat, disp = split_category(topic)
+                entries.append((cat, disp, "cache", doc_hash, n))
 
-            # Build the filtered list of (label, full_name)
-            if chosen_cat == "All categories":
-                choices = []
-                for cat in sorted(viva_cats.keys()):
-                    for disp, full in sorted(viva_cats[cat]):
-                        choices.append((f"{cat} › {disp}", full))
-            else:
-                choices = [(disp, full) for disp, full in sorted(viva_cats[chosen_cat])]
+            cats = sorted({e[0] for e in entries})
+            chosen_cat = st.selectbox("Category", ["All categories"] + cats, key="viva_cat_filter")
 
-            labels = ["—"] + [lbl for lbl, _ in choices]
+            shown = entries if chosen_cat == "All categories" else [e for e in entries if e[0] == chosen_cat]
+            shown = sorted(shown, key=lambda e: (e[0].lower(), e[1].lower()))
+
+            # Build labels; include category prefix when showing all
+            label_map = {}
+            labels = ["—"]
+            for cat, disp, source, ref, n in shown:
+                lbl = (f"{cat} › {disp} · {n} Q" if chosen_cat == "All categories"
+                       else f"{disp} · {n} Q")
+                # de-duplicate identical labels defensively
+                if lbl in label_map:
+                    lbl = f"{lbl} ({source})"
+                label_map[lbl] = (source, ref, disp if chosen_cat != "All categories" else f"{cat} › {disp}")
+                labels.append(lbl)
+
             pick_lbl = st.selectbox("Viva bank", labels,
                                     label_visibility="collapsed", key="viva_bank_pick")
-            pick = None
-            if pick_lbl != "—":
-                pick = dict((lbl, full) for lbl, full in choices)[pick_lbl]
-            if pick and st.button("Load this viva bank", key="load_viva_bank"):
-                st.session_state["viva_data"] = viva_banks[pick]
+            if pick_lbl != "—" and st.button("Load this viva bank", key="load_viva_bank"):
+                source, ref, nice_name = label_map[pick_lbl]
+                if source == "builtin":
+                    st.session_state["viva_data"] = builtin_viva[ref]
+                else:
+                    st.session_state["viva_data"] = get_viva_for_hash(ref)
                 st.session_state["viva_revealed"] = {}
                 st.session_state["viva_confidence_logged"] = {}
-                st.session_state["viva_bank_name"] = pick
+                st.session_state["viva_bank_name"] = nice_name
                 st.rerun()
 
     if not pdf_ready and not st.session_state.get("viva_data"):
