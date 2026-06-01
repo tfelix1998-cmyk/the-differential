@@ -362,6 +362,15 @@ def list_builtin_viva():
     return {name: qs for name, qs in BUILTIN_VIVA.items() if qs}
 
 
+def split_category(name):
+    """Free-form categories via a 'Category :: Name' convention in the bank name.
+    Returns (category, display_name). No separator -> 'Uncategorised'."""
+    if name and " :: " in name:
+        cat, _, disp = name.partition(" :: ")
+        return cat.strip() or "Uncategorised", disp.strip() or name
+    return "Uncategorised", name
+
+
 def list_topics_with_mcqs():
     """Return [(topic, doc_hash, mcq_count), …] for every saved doc that has MCQs."""
     rows = []
@@ -947,9 +956,30 @@ with tab_viva:
     viva_banks = list_builtin_viva()
     if viva_banks:
         with st.expander("📚 Load a saved viva bank", expanded=not st.session_state.get("viva_data")):
-            pick = st.selectbox("Viva bank", ["—"] + list(viva_banks.keys()),
-                                label_visibility="collapsed", key="viva_bank_pick")
-            if pick != "—" and st.button("Load this viva bank", key="load_viva_bank"):
+            # Group banks by category (free-form via "Category :: Name")
+            viva_cats = {}
+            for full_name in viva_banks.keys():
+                cat, disp = split_category(full_name)
+                viva_cats.setdefault(cat, []).append((disp, full_name))
+            cat_options = ["All categories"] + sorted(viva_cats.keys())
+            chosen_cat = st.selectbox("Category", cat_options, key="viva_cat_filter")
+
+            # Build the filtered list of (label, full_name)
+            if chosen_cat == "All categories":
+                choices = []
+                for cat in sorted(viva_cats.keys()):
+                    for disp, full in sorted(viva_cats[cat]):
+                        choices.append((f"{cat} › {disp}", full))
+            else:
+                choices = [(disp, full) for disp, full in sorted(viva_cats[chosen_cat])]
+
+            labels = ["—"] + [lbl for lbl, _ in choices]
+            pick_lbl = st.selectbox("Viva bank", labels,
+                                    label_visibility="collapsed", key="viva_bank_pick")
+            pick = None
+            if pick_lbl != "—":
+                pick = dict((lbl, full) for lbl, full in choices)[pick_lbl]
+            if pick and st.button("Load this viva bank", key="load_viva_bank"):
                 st.session_state["viva_data"] = viva_banks[pick]
                 st.session_state["viva_revealed"] = {}
                 st.session_state["viva_confidence_logged"] = {}
@@ -1026,8 +1056,36 @@ with tab_viva:
 # MCQ TAB
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_mcq:
-    if not pdf_ready and not import_ready:
-        st.info("👈 Upload a PDF (or import a paper) in the sidebar to begin.")
+    # ── Load a saved MCQ bank directly (categorised) ──
+    mcq_topics = list_topics_with_mcqs()
+    if mcq_topics and not st.session_state.get("mcqs"):
+        with st.expander("📚 Load a saved MCQ bank", expanded=True):
+            mcq_cats = {}
+            for topic, doc_hash, n in mcq_topics:
+                cat, disp = split_category(topic)
+                mcq_cats.setdefault(cat, []).append((disp, topic, doc_hash, n))
+            mcq_cat_pick = st.selectbox("Category",
+                                        ["All categories"] + sorted(mcq_cats.keys()),
+                                        key="mcq_cat_filter")
+            shown = sorted(mcq_cats.keys()) if mcq_cat_pick == "All categories" else [mcq_cat_pick]
+            choices = []
+            for cat in shown:
+                for disp, topic, doc_hash, n in sorted(mcq_cats[cat]):
+                    choices.append((f"{cat} › {disp} · {n} Q", doc_hash))
+            labels = ["—"] + [lbl for lbl, _ in choices]
+            picked = st.selectbox("Bank", labels, label_visibility="collapsed", key="mcq_bank_pick")
+            if picked != "—" and st.button("Load this MCQ bank", key="load_mcq_bank"):
+                dh = dict((lbl, h) for lbl, h in choices)[picked]
+                st.session_state["mcqs"] = get_mcqs_for_hash(dh)
+                st.session_state["mcq_submitted"] = {}
+                st.session_state["mcq_mode"] = None
+                st.session_state["mcq_exam_idx"] = 0
+                st.session_state["exam_start_time"] = None
+                st.session_state["is_imported"] = False
+                st.rerun()
+
+    if not pdf_ready and not import_ready and not st.session_state.get("mcqs"):
+        st.info("👈 Upload a PDF, import a paper, or load a saved bank above to begin.")
     elif not st.session_state.get("mcqs"):
         if import_ready:
             st.markdown("### 📥 Import Existing Paper")
@@ -1419,12 +1477,25 @@ with tab_mock:
                 unsafe_allow_html=True
             )
 
-            # Topic selection checkboxes
-            selected_hashes = []
+            # Group topics by free-form category ("Category :: Name")
+            mock_cats = {}
             for topic, doc_hash, n in topics:
-                short = topic if len(topic) <= 45 else topic[:42] + "…"
-                if st.checkbox(f"{short}  ·  {n} Q", key=f"mock_pick_{doc_hash}"):
-                    selected_hashes.append(doc_hash)
+                cat, disp = split_category(topic)
+                mock_cats.setdefault(cat, []).append((disp, topic, doc_hash, n))
+
+            cat_filter = st.selectbox("Filter by category",
+                                      ["All categories"] + sorted(mock_cats.keys()),
+                                      key="mock_cat_filter")
+            shown_cats = sorted(mock_cats.keys()) if cat_filter == "All categories" else [cat_filter]
+
+            # Topic selection checkboxes, grouped under category headers
+            selected_hashes = []
+            for cat in shown_cats:
+                st.markdown(f"**{cat}**")
+                for disp, topic, doc_hash, n in sorted(mock_cats[cat]):
+                    short = disp if len(disp) <= 45 else disp[:42] + "…"
+                    if st.checkbox(f"{short}  ·  {n} Q", key=f"mock_pick_{doc_hash}"):
+                        selected_hashes.append(doc_hash)
 
             st.markdown("---")
 
