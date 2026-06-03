@@ -23,15 +23,24 @@ CRITICAL RULES:
 4. Do NOT summarize away examinable details.
 5. If something appears repetitive in my notes, still include it in the Q&A.
 6. Every concept, list, table, definition, explanation, and sub-point in my notes must appear in at least one Q&A.
+7. PRIORITISE THE HIGHEST-YIELD INFORMATION a junior doctor (intern) must know for
+   safe clinical practice and exams — but still ensure full coverage per rule 6.
+8. COVER THE ENTIRE SET OF NOTES EVENLY. Draw questions from the beginning, middle,
+   AND end of the material. Do NOT over-sample the opening sections and neglect later
+   content — every section of the notes must be represented.
 
 QUESTION FORMAT:
 - Use medical exam / viva phrasing (e.g. "Define…", "List…", "Explain…", "Differentiate…",
   "Outline your approach to…", "What are the causes of…", etc.)
 - Break complex topics into multiple short, examinable Q&As.
 
-QUALITY CONTROL:
-Before finishing, internally verify that 100% of the content from my notes has been
-converted into questions. Do not finish until everything has been transformed.
+QUALITY CONTROL (verify before finishing):
+1. Confirm that 100% of the content from my notes has been converted into questions,
+   with even coverage across the whole document (start, middle, and end).
+2. Re-read every question and answer you have written and CHECK that each one is
+   derived SOLELY from the provided notes. If any question or answer contains a fact,
+   figure, drug, or detail NOT present in my notes, remove or rewrite it so it is
+   100% grounded in the source. Do not finish until this check is complete.
 
 ─────────────────────────────────────────────────────────────────
 OUTPUT FORMAT — CRITICAL (overrides all other formatting rules):
@@ -66,6 +75,11 @@ GENERAL GUIDELINES:
 2. Ensure questions cover a range of clinical situations, challenging the learner to apply
    broad knowledge and clinical reasoning.
 3. Incorporate depth in clinical scenarios, pathophysiology, diagnostic strategies, and management.
+4. PRIORITISE THE HIGHEST-YIELD CONCEPTS a junior doctor (intern) must know — the facts
+   and decisions most important for safe clinical practice and most likely to be examined.
+5. COVER CONCEPTS FROM ACROSS THE ENTIRE SET OF NOTES — beginning, middle, and end.
+   Distribute questions evenly throughout the material; do NOT concentrate on the opening
+   sections and ignore later content. Every major section must be represented.
 
 QUESTION CONSTRUCTION:
 - Case Presentation: include patient demographics (age, gender), precise presenting complaint,
@@ -85,8 +99,15 @@ ANSWER OPTIONS:
 - Distractors should progressively increase in difficulty.
 
 DIFFICULTY SPLIT:
-- 60 % Medium: solid intern-level knowledge, foundational concepts applied.
-- 40 % Hard:   higher-order thinking, clinical judgment, nuanced scenarios.
+- 50 % Medium: solid intern-level knowledge, foundational concepts applied.
+- 50 % Hard:   higher-order thinking, clinical judgment, nuanced scenarios.
+
+VERIFICATION (do this before producing output):
+Re-read every question, option, correct answer, and explanation you have written.
+CHECK that each is derived SOLELY from the provided source material — no outside facts,
+drugs, figures, guidelines, or details that are not present in the source. If anything
+is not grounded in the material, remove or rewrite it. Also confirm the questions are
+spread evenly across the whole document, not clustered at the start.
 
 ─────────────────────────────────────────────────────────────────
 OUTPUT FORMAT — CRITICAL (overrides all other formatting rules):
