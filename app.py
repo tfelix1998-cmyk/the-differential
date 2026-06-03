@@ -242,6 +242,10 @@ try:
     c.execute("ALTER TABLE mcq_feedback ADD COLUMN user TEXT DEFAULT 'Terry'")
 except Exception:
     pass
+c.execute("""CREATE TABLE IF NOT EXISTS library_notes (
+    id INTEGER PRIMARY KEY, title TEXT, category TEXT, subtopic TEXT,
+    content TEXT, uploaded_by TEXT DEFAULT 'Terry',
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
 conn.commit()
 
 # ── Supabase (permanent cloud storage for the generated-content cache) ─────────
@@ -480,6 +484,55 @@ def fetch_viva(user):
             pass
     rows = c.execute("SELECT topic, confidence, timestamp FROM viva_reviews WHERE user=?", (user,)).fetchall()
     return [{"topic": t, "confidence": cf, "ts": ts} for t, cf, ts in rows]
+
+
+def save_library_note(title, category, subtopic, content, uploaded_by):
+    """Save a text note to the shared library (Supabase, with SQLite fallback)."""
+    if SUPABASE_ENABLED:
+        try:
+            supabase.table("library_notes").insert({
+                "title": title, "category": category, "subtopic": subtopic,
+                "content": content, "uploaded_by": uploaded_by,
+            }).execute()
+            return True
+        except Exception:
+            pass
+    try:
+        c.execute("INSERT INTO library_notes (title,category,subtopic,content,uploaded_by) VALUES (?,?,?,?,?)",
+                  (title, category, subtopic, content, uploaded_by))
+        conn.commit()
+        return True
+    except Exception:
+        return False
+
+
+def list_library_notes():
+    """Return list of note dicts: {id, title, category, subtopic, content, uploaded_by}."""
+    if SUPABASE_ENABLED:
+        try:
+            res = supabase.table("library_notes").select(
+                "id, title, category, subtopic, content, uploaded_by").order(
+                "created_at", desc=True).execute()
+            return res.data
+        except Exception:
+            pass
+    rows = c.execute("SELECT id, title, category, subtopic, content, uploaded_by FROM library_notes ORDER BY id DESC").fetchall()
+    return [{"id": r[0], "title": r[1], "category": r[2], "subtopic": r[3],
+             "content": r[4], "uploaded_by": r[5]} for r in rows]
+
+
+def delete_library_note(note_id):
+    if SUPABASE_ENABLED:
+        try:
+            supabase.table("library_notes").delete().eq("id", note_id).execute()
+            return
+        except Exception:
+            pass
+    try:
+        c.execute("DELETE FROM library_notes WHERE id=?", (note_id,))
+        conn.commit()
+    except Exception:
+        pass
 
 
 def list_topics_with_mcqs():
@@ -977,8 +1030,8 @@ if st.session_state.get("gen_errors"):
         st.error(f"⚠️ Generation issue → {err}")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock = st.tabs(
-    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam"]
+tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_library = st.tabs(
+    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "📚  Library"]
 )
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1890,3 +1943,88 @@ with tab_mock:
                       "mock_idx", "mock_marked", "mock_running", "mock_start"]:
                 st.session_state.pop(k, None)
             st.rerun()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# LIBRARY TAB — shared text-notes library; read + generate questions from notes
+# ═════════════════════════════════════════════════════════════════════════════
+with tab_library:
+    st.markdown("### 📚 Library")
+    st.caption("Shared notes for Terry & Alex. Upload extracts the text (the original PDF stays on your device). No API cost to store or read.")
+
+    lib_user = st.session_state.get("current_user", "Terry")
+
+    # ── Upload a new note ──
+    with st.expander("➕ Add a note to the library", expanded=False):
+        lib_cat = st.text_input("Category", placeholder="e.g. ICU Week 8", key="lib_cat")
+        lib_sub = st.text_input("Subtopic / title", placeholder="e.g. ARDS", key="lib_sub")
+        lib_file = st.file_uploader("Upload a PDF (text will be extracted)", type=["pdf"], key="lib_upload")
+        if lib_file and st.button("💾 Save to library", key="lib_save", type="primary"):
+            with st.spinner("Extracting text…"):
+                text = extract_text_from_pdf(lib_file)
+            if text.strip():
+                title = lib_sub.strip() or lib_file.name
+                ok = save_library_note(title, lib_cat.strip(), lib_sub.strip(), text, lib_user)
+                if ok:
+                    st.success(f"✅ Saved “{title}” to the library.")
+                    st.rerun()
+                else:
+                    st.error("Could not save the note. Try again.")
+            else:
+                st.warning("⚠️ No text found — likely a scanned PDF. Text-only library needs selectable text.")
+
+    st.markdown("---")
+
+    # ── Browse notes (list, grouped by category) ──
+    notes = list_library_notes()
+    if not notes:
+        st.info("No notes yet. Add your first note above.")
+    else:
+        # Category filter
+        cats = sorted({(n.get("category") or "Uncategorised") for n in notes})
+        cat_pick = st.selectbox("Filter by category", ["All categories"] + cats, key="lib_cat_filter")
+        shown = notes if cat_pick == "All categories" else [n for n in notes if (n.get("category") or "Uncategorised") == cat_pick]
+
+        st.caption(f"{len(shown)} note(s)")
+
+        for n in shown:
+            nid = n.get("id")
+            title = n.get("title") or "Untitled"
+            cat = n.get("category") or "Uncategorised"
+            by = n.get("uploaded_by") or "?"
+            header = f"{cat} › {title}  ·  added by {by}"
+            with st.expander(header):
+                content = n.get("content") or ""
+                # Read the note
+                st.text_area("Note text", value=content, height=300,
+                             key=f"lib_read_{nid}", label_visibility="collapsed")
+
+                # Generate questions straight from this note
+                st.markdown("**Generate from this note:**")
+                g1, g2, g3 = st.columns(3)
+                # Build a category-prefixed topic name so it files correctly downstream
+                topic_for_gen = f"{cat} :: {title}" if cat and cat != "Uncategorised" else title
+                with g1:
+                    if st.button("📝 MCQs", key=f"lib_gen_mcq_{nid}"):
+                        with st.spinner("Generating MCQs…"):
+                            generate_section("mcq", content, topic_for_gen)
+                        st.success("MCQs generated — see the MCQ & Mock Exam tabs.")
+                with g2:
+                    if st.button("🗣️ Viva", key=f"lib_gen_viva_{nid}"):
+                        with st.spinner("Generating viva…"):
+                            generate_section("viva", content, topic_for_gen)
+                        st.success("Viva generated — see the Viva tab picker.")
+                with g3:
+                    if st.button("🗂️ Anki", key=f"lib_gen_anki_{nid}"):
+                        with st.spinner("Generating Anki cards…"):
+                            generate_section("anki", content, topic_for_gen)
+                        st.success("Anki generated — see the Anki tab.")
+
+                # Delete — only the uploader may delete their own note
+                st.markdown("---")
+                if by == lib_user:
+                    if st.button("🗑️ Delete this note", key=f"lib_del_{nid}"):
+                        delete_library_note(nid)
+                        st.rerun()
+                else:
+                    st.caption(f"Only {by} can delete this note.")
