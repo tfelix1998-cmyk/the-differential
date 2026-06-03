@@ -416,6 +416,72 @@ def get_viva_for_hash(doc_hash):
         return []
 
 
+def log_mcq_attempt(topic, question_text, selected, correct, is_correct, user):
+    """Write an MCQ attempt to Supabase (if on) AND local SQLite."""
+    if SUPABASE_ENABLED:
+        try:
+            supabase.table("mcq_attempts").insert({
+                "topic": topic, "question_text": question_text,
+                "selected_answer": selected, "correct_answer": correct,
+                "is_correct": bool(is_correct), "user": user,
+            }).execute()
+        except Exception:
+            pass
+    try:
+        c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct,user) VALUES (?,?,?,?,?,?)",
+                  (topic, question_text, selected, correct, is_correct, user))
+        conn.commit()
+    except Exception:
+        pass
+
+
+def log_viva_review(topic, question_text, confidence, user):
+    """Write a viva confidence rating to Supabase (if on) AND local SQLite."""
+    if SUPABASE_ENABLED:
+        try:
+            supabase.table("viva_reviews").insert({
+                "topic": topic, "question_text": question_text,
+                "confidence": confidence, "user": user,
+            }).execute()
+        except Exception:
+            pass
+    try:
+        c.execute("INSERT INTO viva_reviews (topic,question_text,confidence,user) VALUES (?,?,?,?)",
+                  (topic, question_text, confidence, user))
+        conn.commit()
+    except Exception:
+        pass
+
+
+def fetch_attempts(user):
+    """Return list of attempt dicts for a user: {topic, is_correct, timestamp}.
+    Prefers Supabase, falls back to SQLite."""
+    if SUPABASE_ENABLED:
+        try:
+            res = supabase.table("mcq_attempts").select(
+                "topic, is_correct, created_at").eq("user", user).execute()
+            return [{"topic": r.get("topic"), "is_correct": r.get("is_correct"),
+                     "ts": r.get("created_at")} for r in res.data]
+        except Exception:
+            pass
+    rows = c.execute("SELECT topic, is_correct, timestamp FROM mcq_attempts WHERE user=?", (user,)).fetchall()
+    return [{"topic": t, "is_correct": ic, "ts": ts} for t, ic, ts in rows]
+
+
+def fetch_viva(user):
+    """Return list of viva review dicts: {topic, confidence, timestamp}."""
+    if SUPABASE_ENABLED:
+        try:
+            res = supabase.table("viva_reviews").select(
+                "topic, confidence, created_at").eq("user", user).execute()
+            return [{"topic": r.get("topic"), "confidence": r.get("confidence"),
+                     "ts": r.get("created_at")} for r in res.data]
+        except Exception:
+            pass
+    rows = c.execute("SELECT topic, confidence, timestamp FROM viva_reviews WHERE user=?", (user,)).fetchall()
+    return [{"topic": t, "confidence": cf, "ts": ts} for t, cf, ts in rows]
+
+
 def list_topics_with_mcqs():
     """Return [(topic, doc_hash, mcq_count), …] for every saved doc that has MCQs."""
     rows = []
@@ -937,6 +1003,76 @@ with tab_dash:
     m4.metric("Viva Reviews",        total_viva)
     st.markdown("")
 
+    # ── Performance by topic & category (the weak-spots tracker) ──
+    attempts = fetch_attempts(du)
+    if attempts:
+        st.markdown("#### 📊 Performance by topic")
+        st.caption("Accuracy per topic, grouped by category. Red = needs work, green = strong.")
+
+        # Aggregate by category -> topic -> (correct, total)
+        agg = {}
+        for a in attempts:
+            cat, disp = split_category(a.get("topic") or "Uncategorised")
+            agg.setdefault(cat, {}).setdefault(disp, [0, 0])
+            agg[cat][disp][1] += 1
+            if a.get("is_correct"):
+                agg[cat][disp][0] += 1
+
+        def bar_colour(pct):
+            if pct >= 75: return "#4CAF50"
+            if pct >= 50: return "#C9A84C"
+            return "#EF5350"
+
+        for cat in sorted(agg.keys()):
+            # Category-level totals
+            c_correct = sum(v[0] for v in agg[cat].values())
+            c_total = sum(v[1] for v in agg[cat].values())
+            c_pct = (c_correct / c_total * 100) if c_total else 0
+            st.markdown(
+                f'<div style="margin-top:14px;font-weight:700;color:#C9A84C;">{cat} '
+                f'<span style="color:#8A8070;font-weight:500;font-size:0.85rem;">'
+                f'· {c_correct}/{c_total} ({c_pct:.0f}%)</span></div>',
+                unsafe_allow_html=True
+            )
+            for topic in sorted(agg[cat].keys()):
+                correct, tot = agg[cat][topic]
+                pct = (correct / tot * 100) if tot else 0
+                col = bar_colour(pct)
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:12px;margin:4px 0;">'
+                    f'<div style="width:160px;font-size:0.85rem;color:#FAFAF8;overflow:hidden;'
+                    f'text-overflow:ellipsis;white-space:nowrap;">{topic}</div>'
+                    f'<div style="flex:1;background:#2E2A22;border-radius:6px;height:14px;position:relative;">'
+                    f'<div style="width:{pct:.0f}%;background:{col};height:14px;border-radius:6px;"></div></div>'
+                    f'<div style="width:70px;text-align:right;font-size:0.82rem;font-weight:600;color:{col};">'
+                    f'{pct:.0f}% ({correct}/{tot})</div></div>',
+                    unsafe_allow_html=True
+                )
+        st.markdown("")
+
+        # ── Progress over time: rolling accuracy ──
+        dated = [a for a in attempts if a.get("ts")]
+        if len(dated) >= 5:
+            st.markdown("#### 📈 Accuracy over time")
+            def _day(ts):
+                return str(ts)[:10]
+            by_day = {}
+            for a in dated:
+                d = _day(a["ts"])
+                by_day.setdefault(d, [0, 0])
+                by_day[d][1] += 1
+                if a.get("is_correct"):
+                    by_day[d][0] += 1
+            days_sorted = sorted(by_day.keys())
+            rows = [{"Date": d, "Accuracy %": round(by_day[d][0] / by_day[d][1] * 100, 1)}
+                    for d in days_sorted]
+            try:
+                df_prog = pd.DataFrame(rows).set_index("Date")
+                st.line_chart(df_prog, height=220)
+            except Exception:
+                pass
+        st.markdown("")
+
     # ── Flagged questions: things you rated 👎 or left notes on ──
     def _load_flagged():
         if SUPABASE_ENABLED:
@@ -1112,8 +1248,7 @@ with tab_viva:
                         c1, c2, c3 = st.columns(3)
                         def _log(idx, level):
                             vtopic = st.session_state.get("viva_bank_name") or topic_name
-                            c.execute("INSERT INTO viva_reviews (topic,question_text,confidence,user) VALUES (?,?,?,?)",
-                                      (vtopic, st.session_state["viva_data"][idx]["question"], level, st.session_state.get("current_user","Terry")))
+                            log_viva_review(vtopic, st.session_state["viva_data"][idx]["question"], level, st.session_state.get("current_user","Terry"))
                             conn.commit()
                             st.session_state["viva_confidence_logged"][idx] = level
                         if c1.button("🔴 Hard", key=f"hard_{i}"): _log(i, 1); st.rerun()
@@ -1320,9 +1455,7 @@ with tab_mcq:
                         if st.button("Submit Answer", key="es", type="primary", use_container_width=True):
                             if choice:
                                 is_correct = choice.strip()[0].upper() == correct_letter
-                                c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct,user) VALUES (?,?,?,?,?,?)",
-                                          (topic_name, mcq["question_text"], choice, correct_letter, is_correct, st.session_state.get("current_user","Terry")))
-                                conn.commit()
+                                log_mcq_attempt(topic_name, mcq["question_text"], choice, correct_letter, is_correct, st.session_state.get("current_user","Terry"))
                                 st.session_state["mcq_submitted"][idx] = {"choice": choice, "correct": is_correct}
                                 st.rerun()
                             else:
@@ -1425,9 +1558,7 @@ with tab_mcq:
                     if st.button("Submit", key=f"rev_s_{i}"):
                         if choice:
                             is_correct = choice.strip()[0].upper() == correct_letter
-                            c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct,user) VALUES (?,?,?,?,?,?)",
-                                      (topic_name, mcq["question_text"], choice, correct_letter, is_correct, st.session_state.get("current_user","Terry")))
-                            conn.commit()
+                            log_mcq_attempt(topic_name, mcq["question_text"], choice, correct_letter, is_correct, st.session_state.get("current_user","Terry"))
                             st.session_state["mcq_submitted"][i] = {"choice": choice, "correct": is_correct}
                             st.rerun()
                         else:
@@ -1686,8 +1817,7 @@ with tab_mock:
                 if st.button("Submit Answer", key=f"mock_sub_{idx}", type="primary"):
                     if choice:
                         ok = choice.strip()[0].upper() == correct_letter
-                        c.execute("INSERT INTO mcq_attempts (topic,question_text,selected_answer,correct_answer,is_correct,user) VALUES (?,?,?,?,?,?)",
-                                  ("Mock Exam", mcq["question_text"], choice, correct_letter, ok, st.session_state.get("current_user","Terry")))
+                        log_mcq_attempt("Mock Exam", mcq["question_text"], choice, correct_letter, ok, st.session_state.get("current_user","Terry"))
                         conn.commit()
                         st.session_state["mock_submitted"][idx] = {"choice": choice, "correct": ok}
                         st.rerun()
