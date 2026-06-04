@@ -495,6 +495,42 @@ def clean_text(s):
     return "".join(ch for ch in s if ch in ("\n", "\t", "\r") or ord(ch) >= 32)
 
 
+def format_note_text(text):
+    """Heuristically turn flat extracted PDF text into readable Markdown.
+    NOTE: extraction loses the original layout; this is a best-effort
+    reconstruction (headings, sub-points), not the exact original document."""
+    if not text:
+        return ""
+    out = []
+    for raw_line in text.split("\n"):
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            out.append("")  # blank line -> paragraph break
+            continue
+        # ALL-CAPS lines (and not too long) -> headings
+        letters = [ch for ch in stripped if ch.isalpha()]
+        is_caps = letters and all(ch.isupper() for ch in letters) and len(stripped) <= 60
+        if is_caps:
+            out.append(f"\n#### {stripped}")
+            continue
+        # Single-letter prefixes like 'A ...', 'B: ...' -> indented sub-bullets
+        m = re.match(r"^([A-E])[\s:.\)]+(.*)$", stripped)
+        if m and len(m.group(2)) > 0:
+            out.append(f"  - **{m.group(1)}:** {m.group(2)}")
+            continue
+        # Lines already starting with a bullet-ish marker
+        if re.match(r"^[\-\u2022\*]\s+", stripped):
+            out.append(f"- {stripped[1:].strip()}")
+            continue
+        # Otherwise a normal paragraph line
+        out.append(stripped)
+    md = "\n".join(out)
+    # Collapse 3+ blank lines to a max of one blank line
+    md = re.sub(r"\n{3,}", "\n\n", md)
+    return md
+
+
 def save_library_note(title, category, subtopic, content, uploaded_by):
     """Save a text note to the shared library (Supabase, with SQLite fallback)."""
     content = clean_text(content)
@@ -1055,8 +1091,8 @@ if st.session_state.get("gen_errors"):
         st.error(f"⚠️ Generation issue → {err}")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_library = st.tabs(
-    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "📚  Library"]
+tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_library, tab_help = st.tabs(
+    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "📚  Library", "❓  How to use"]
 )
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2028,9 +2064,13 @@ with tab_library:
             header = f"{cat} › {title}  ·  added by {by}"
             with st.expander(header):
                 content = n.get("content") or ""
-                # Read the note
-                st.text_area("Note text", value=content, height=300,
-                             key=f"lib_read_{nid}", label_visibility="collapsed")
+                # Readable formatted view (best-effort reconstruction)
+                show_raw = st.toggle("Show raw text", key=f"lib_raw_{nid}", value=False)
+                if show_raw:
+                    st.text_area("Note text", value=content, height=300,
+                                 key=f"lib_read_{nid}", label_visibility="collapsed")
+                else:
+                    st.markdown(format_note_text(content))
 
                 # Generate questions straight from this note
                 st.markdown("**Generate from this note:**")
@@ -2061,3 +2101,65 @@ with tab_library:
                         st.rerun()
                 else:
                     st.caption(f"Only {by} can delete this note.")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# HELP TAB — how the site works, for Terry, Alex, or anyone new
+# ═════════════════════════════════════════════════════════════════════════════
+with tab_help:
+    st.markdown("### ❓ How to use The Differential")
+    st.caption("A quick guide for anyone using this study tool.")
+
+    st.markdown("""
+**The Differential** is a study tool for medical exams. You give it material (lecture
+notes, or curated question banks), and it helps you drill that material as multiple-choice
+questions, viva (spoken-style) questions, and Anki flashcards — and tracks how you're doing.
+
+#### 👤 First: pick who you are
+Use the **"Studying as"** selector in the sidebar (Terry or Alex). Your scores, ratings,
+and progress are tracked separately. The question banks themselves are shared.
+
+#### 🗂️ The two ways to get questions
+1. **Generate from notes** *(uses the AI — counts toward daily limits)*
+   In the sidebar, choose "Generate from notes", optionally add a Category and Subtopic,
+   upload a PDF, then open the MCQ / Viva / Anki tab and press the Generate button. The AI
+   reads your notes and writes questions from them.
+2. **Saved banks** *(instant, free, no AI)*
+   Curated question sets that are built into the app, plus anything you've generated before.
+   Load them from the picker at the top of the MCQ and Viva tabs. These cost nothing and
+   load instantly.
+
+#### 📚 The tabs
+- **Dashboard** — your stats: accuracy, performance by topic (red = needs work), progress over time, and any questions you flagged.
+- **Viva** — spoken-exam-style Q&A. Read the question, think/say your answer, reveal the model answer, then rate your confidence (Hard / Good / Easy).
+- **MCQ** — multiple-choice. Exam mode (timed, with a question navigator and mark-for-review) or review mode. You can also leave 👍/👎 feedback and notes on each question.
+- **Anki** — exports cloze-deletion flashcards you can import into the Anki app.
+- **Mock Exam** — build a custom exam by picking topics from your saved banks. Instant, no AI cost.
+- **Library** — shared reference notes. Upload a PDF; it stores the text (the original PDF stays on your device). You can read notes here and generate questions straight from them.
+
+#### 🏷️ Categories
+When uploading or naming a bank, you can file things under a **Category** and **Subtopic**
+(e.g. "ICU Week 8" › "ARDS"). The MCQ, Viva, and Mock Exam tabs let you filter by category.
+
+#### ✅ Strengths
+- Turns your own notes into practice questions quickly.
+- Saved banks and the library are free and instant (no AI cost).
+- Tracks weak topics so you know what to revise.
+- Works on any device through the web link; data is saved permanently.
+
+#### ⚠️ Limitations (honest)
+- **AI questions are only as good as the notes given**, and the AI can occasionally make
+  mistakes or include something slightly off — always sanity-check against a trusted source.
+- **Generating questions uses a daily free AI quota.** If generation fails or is slow, it's
+  usually the quota or a busy server — saved banks and the library don't have this problem.
+- **The library stores text only** — original formatting, images, and diagrams from PDFs are
+  not preserved. Keep your original files elsewhere (e.g. Google Drive) for the pristine version.
+- **Scanned/image PDFs won't work** for generation or the library — the text must be selectable.
+- This tool **supports** your study; it isn't a source of truth. Use your guidelines and
+  textbooks as the authority.
+
+#### 🆘 If something doesn't work
+- Check the sidebar shows **🟢 Permanent storage active**.
+- If a generation fails, wait a moment and try again (likely a busy server or quota), or use a saved bank.
+- Generated content and uploads are saved automatically — you don't need to do anything to keep them.
+""")
