@@ -496,9 +496,11 @@ def clean_text(s):
 
 
 def format_note_text(text):
-    """Heuristically turn flat extracted PDF text into readable Markdown.
-    NOTE: extraction loses the original layout; this is a best-effort
-    reconstruction (headings, sub-points), not the exact original document."""
+    """Render notes readably while PRESERVING the author's line structure.
+    Only ALL-CAPS lines become headings; everything else is shown verbatim
+    (with its own line breaks kept). We do NOT invent bullets — that destroyed
+    the structure of pasted/typed notes. Markdown shows line breaks via two
+    trailing spaces."""
     if not text:
         return ""
     out = []
@@ -508,25 +510,15 @@ def format_note_text(text):
         if not stripped:
             out.append("")  # blank line -> paragraph break
             continue
-        # ALL-CAPS lines (and not too long) -> headings
+        # ALL-CAPS short lines -> headings (helps both pasted and extracted notes)
         letters = [ch for ch in stripped if ch.isalpha()]
         is_caps = letters and all(ch.isupper() for ch in letters) and len(stripped) <= 60
         if is_caps:
-            out.append(f"\n#### {stripped}")
+            out.append(f"\n#### {stripped}\n")
             continue
-        # Single-letter prefixes like 'A ...', 'B: ...' -> indented sub-bullets
-        m = re.match(r"^([A-E])[\s:.\)]+(.*)$", stripped)
-        if m and len(m.group(2)) > 0:
-            out.append(f"  - **{m.group(1)}:** {m.group(2)}")
-            continue
-        # Lines already starting with a bullet-ish marker
-        if re.match(r"^[\-\u2022\*]\s+", stripped):
-            out.append(f"- {stripped[1:].strip()}")
-            continue
-        # Otherwise a normal paragraph line
-        out.append(stripped)
+        # Keep the line exactly as written; two trailing spaces = hard line break in Markdown
+        out.append(line + "  ")
     md = "\n".join(out)
-    # Collapse 3+ blank lines to a max of one blank line
     md = re.sub(r"\n{3,}", "\n\n", md)
     return md
 
