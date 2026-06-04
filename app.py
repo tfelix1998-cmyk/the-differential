@@ -495,14 +495,25 @@ def save_library_note(title, category, subtopic, content, uploaded_by):
                 "content": content, "uploaded_by": uploaded_by,
             }).execute()
             return True
-        except Exception:
-            pass
+        except Exception as e:
+            # Surface the real reason instead of failing silently
+            st.error(f"Supabase save failed: {e}")
+            try:
+                c.execute("INSERT INTO library_notes (title,category,subtopic,content,uploaded_by) VALUES (?,?,?,?,?)",
+                          (title, category, subtopic, content, uploaded_by))
+                conn.commit()
+                st.warning("Saved to local storage only (will not persist across restarts).")
+                return True
+            except Exception as e2:
+                st.error(f"Local save also failed: {e2}")
+                return False
     try:
         c.execute("INSERT INTO library_notes (title,category,subtopic,content,uploaded_by) VALUES (?,?,?,?,?)",
                   (title, category, subtopic, content, uploaded_by))
         conn.commit()
         return True
-    except Exception:
+    except Exception as e:
+        st.error(f"Save failed: {e}")
         return False
 
 
@@ -1959,19 +1970,27 @@ with tab_library:
         lib_cat = st.text_input("Category", placeholder="e.g. ICU Week 8", key="lib_cat")
         lib_sub = st.text_input("Subtopic / title", placeholder="e.g. ARDS", key="lib_sub")
         lib_file = st.file_uploader("Upload a PDF (text will be extracted)", type=["pdf"], key="lib_upload")
-        if lib_file and st.button("💾 Save to library", key="lib_save", type="primary"):
-            with st.spinner("Extracting text…"):
-                text = extract_text_from_pdf(lib_file)
-            if text.strip():
-                title = lib_sub.strip() or lib_file.name
-                ok = save_library_note(title, lib_cat.strip(), lib_sub.strip(), text, lib_user)
-                if ok:
-                    st.success(f"✅ Saved “{title}” to the library.")
-                    st.rerun()
-                else:
-                    st.error("Could not save the note. Try again.")
+        save_clicked = st.button("💾 Save to library", key="lib_save", type="primary")
+        if save_clicked:
+            if not lib_file:
+                st.warning("Please attach a PDF first.")
             else:
-                st.warning("⚠️ No text found — likely a scanned PDF. Text-only library needs selectable text.")
+                with st.spinner("Extracting text…"):
+                    try:
+                        text = extract_text_from_pdf(lib_file)
+                    except Exception as e:
+                        text = ""
+                        st.error(f"Could not read PDF: {e}")
+                st.caption(f"Extracted {len(text)} characters.")
+                if text.strip():
+                    title = lib_sub.strip() or lib_file.name
+                    ok = save_library_note(title, lib_cat.strip(), lib_sub.strip(), text, lib_user)
+                    if ok:
+                        st.success(f"✅ Saved “{title}” to the library. Scroll down to see it.")
+                    else:
+                        st.error("Could not save the note (see error above).")
+                else:
+                    st.warning("⚠️ No text extracted — likely a scanned/image PDF. Text-only library needs selectable text.")
 
     st.markdown("---")
 
