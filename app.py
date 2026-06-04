@@ -486,8 +486,21 @@ def fetch_viva(user):
     return [{"topic": t, "confidence": cf, "ts": ts} for t, cf, ts in rows]
 
 
+def clean_text(s):
+    """Remove null bytes and other control characters Postgres rejects.
+    Postgres cannot store \\u0000; PDF extraction sometimes emits these."""
+    if not s:
+        return s
+    s = s.replace("\x00", "")
+    return "".join(ch for ch in s if ch in ("\n", "\t", "\r") or ord(ch) >= 32)
+
+
 def save_library_note(title, category, subtopic, content, uploaded_by):
     """Save a text note to the shared library (Supabase, with SQLite fallback)."""
+    content = clean_text(content)
+    title = clean_text(title)
+    category = clean_text(category)
+    subtopic = clean_text(subtopic)
     if SUPABASE_ENABLED:
         try:
             supabase.table("library_notes").insert({
@@ -663,7 +676,8 @@ def get_mcqs_for_hash(doc_hash):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def extract_text_from_pdf(f):
     reader = PyPDF2.PdfReader(io.BytesIO(f.read()))
-    return "\n\n".join(p.extract_text() for p in reader.pages if p.extract_text())
+    raw = "\n\n".join(p.extract_text() for p in reader.pages if p.extract_text())
+    return clean_text(raw)
 
 def call_gemini(prompt_template, material, max_retries=4):
     """
