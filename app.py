@@ -595,6 +595,30 @@ def delete_library_note(note_id):
         pass
 
 
+def update_library_note(note_id, title, category, subtopic, content):
+    """Update an existing note's fields. Cleans text for Postgres safety."""
+    title = clean_text(title); category = clean_text(category)
+    subtopic = clean_text(subtopic); content = clean_text(content)
+    if SUPABASE_ENABLED:
+        try:
+            supabase.table("library_notes").update({
+                "title": title, "category": category,
+                "subtopic": subtopic, "content": content,
+            }).eq("id", note_id).execute()
+            return True
+        except Exception as e:
+            st.error(f"Update failed: {e}")
+            return False
+    try:
+        c.execute("UPDATE library_notes SET title=?, category=?, subtopic=?, content=? WHERE id=?",
+                  (title, category, subtopic, content, note_id))
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Update failed: {e}")
+        return False
+
+
 def list_topics_with_mcqs():
     """Return [(topic, doc_hash, mcq_count), …] for every saved doc that has MCQs."""
     rows = []
@@ -2019,28 +2043,48 @@ with tab_library:
     with st.expander("➕ Add a note to the library", expanded=False):
         lib_cat = st.text_input("Category", placeholder="e.g. ICU Week 8", key="lib_cat")
         lib_sub = st.text_input("Subtopic / title", placeholder="e.g. ARDS", key="lib_sub")
-        lib_file = st.file_uploader("Upload a PDF (text will be extracted)", type=["pdf"], key="lib_upload")
-        save_clicked = st.button("💾 Save to library", key="lib_save", type="primary")
-        if save_clicked:
-            if not lib_file:
-                st.warning("Please attach a PDF first.")
-            else:
-                with st.spinner("Extracting text…"):
-                    try:
-                        text = extract_text_from_pdf(lib_file)
-                    except Exception as e:
-                        text = ""
-                        st.error(f"Could not read PDF: {e}")
-                st.caption(f"Extracted {len(text)} characters.")
-                if text.strip():
-                    title = lib_sub.strip() or lib_file.name
-                    ok = save_library_note(title, lib_cat.strip(), lib_sub.strip(), text, lib_user)
+
+        add_method = st.radio("Add by", ["📄 Upload PDF", "⌨️ Paste / type text"],
+                              horizontal=True, key="lib_add_method")
+
+        if add_method == "📄 Upload PDF":
+            lib_file = st.file_uploader("Upload a PDF (text will be extracted)", type=["pdf"], key="lib_upload")
+            if st.button("💾 Save to library", key="lib_save", type="primary"):
+                if not lib_file:
+                    st.warning("Please attach a PDF first.")
+                else:
+                    with st.spinner("Extracting text…"):
+                        try:
+                            text = extract_text_from_pdf(lib_file)
+                        except Exception as e:
+                            text = ""
+                            st.error(f"Could not read PDF: {e}")
+                    st.caption(f"Extracted {len(text)} characters.")
+                    if text.strip():
+                        title = lib_sub.strip() or lib_file.name
+                        ok = save_library_note(title, lib_cat.strip(), lib_sub.strip(), text, lib_user)
+                        if ok:
+                            st.success(f"✅ Saved “{title}” to the library. Scroll down to see it.")
+                        else:
+                            st.error("Could not save the note (see error above).")
+                    else:
+                        st.warning("⚠️ No text extracted — likely a scanned/image PDF. Text-only library needs selectable text.")
+        else:
+            pasted = st.text_area("Paste or type your notes here",
+                                  height=260, key="lib_paste",
+                                  placeholder="Paste your notes — you control the formatting exactly.")
+            if st.button("💾 Save to library", key="lib_save_paste", type="primary"):
+                if not pasted.strip():
+                    st.warning("Please paste or type some text first.")
+                elif not lib_sub.strip():
+                    st.warning("Please add a Subtopic / title.")
+                else:
+                    title = lib_sub.strip()
+                    ok = save_library_note(title, lib_cat.strip(), lib_sub.strip(), pasted, lib_user)
                     if ok:
                         st.success(f"✅ Saved “{title}” to the library. Scroll down to see it.")
                     else:
                         st.error("Could not save the note (see error above).")
-                else:
-                    st.warning("⚠️ No text extracted — likely a scanned/image PDF. Text-only library needs selectable text.")
 
     st.markdown("---")
 
@@ -2064,43 +2108,72 @@ with tab_library:
             header = f"{cat} › {title}  ·  added by {by}"
             with st.expander(header):
                 content = n.get("content") or ""
-                # Readable formatted view (best-effort reconstruction)
-                show_raw = st.toggle("Show raw text", key=f"lib_raw_{nid}", value=False)
-                if show_raw:
-                    st.text_area("Note text", value=content, height=300,
-                                 key=f"lib_read_{nid}", label_visibility="collapsed")
-                else:
-                    st.markdown(format_note_text(content))
+                edit_key = f"lib_editing_{nid}"
+                editing = st.session_state.get(edit_key, False)
 
-                # Generate questions straight from this note
-                st.markdown("**Generate from this note:**")
-                g1, g2, g3 = st.columns(3)
-                # Build a category-prefixed topic name so it files correctly downstream
-                topic_for_gen = f"{cat} :: {title}" if cat and cat != "Uncategorised" else title
-                with g1:
-                    if st.button("📝 MCQs", key=f"lib_gen_mcq_{nid}"):
-                        with st.spinner("Generating MCQs…"):
-                            generate_section("mcq", content, topic_for_gen)
-                        st.success("MCQs generated — see the MCQ & Mock Exam tabs.")
-                with g2:
-                    if st.button("🗣️ Viva", key=f"lib_gen_viva_{nid}"):
-                        with st.spinner("Generating viva…"):
-                            generate_section("viva", content, topic_for_gen)
-                        st.success("Viva generated — see the Viva tab picker.")
-                with g3:
-                    if st.button("🗂️ Anki", key=f"lib_gen_anki_{nid}"):
-                        with st.spinner("Generating Anki cards…"):
-                            generate_section("anki", content, topic_for_gen)
-                        st.success("Anki generated — see the Anki tab.")
-
-                # Delete — only the uploader may delete their own note
-                st.markdown("---")
-                if by == lib_user:
-                    if st.button("🗑️ Delete this note", key=f"lib_del_{nid}"):
-                        delete_library_note(nid)
-                        st.rerun()
+                if editing:
+                    # ── Edit mode ──
+                    e_cat = st.text_input("Category", value=cat if cat != "Uncategorised" else "",
+                                          key=f"lib_ecat_{nid}")
+                    e_title = st.text_input("Subtopic / title", value=title, key=f"lib_etitle_{nid}")
+                    e_content = st.text_area("Note text", value=content, height=360,
+                                             key=f"lib_econtent_{nid}")
+                    cs, cc = st.columns(2)
+                    with cs:
+                        if st.button("💾 Save changes", key=f"lib_savedit_{nid}", type="primary"):
+                            ok = update_library_note(nid, e_title.strip(), e_cat.strip(),
+                                                     e_title.strip(), e_content)
+                            if ok:
+                                st.session_state[edit_key] = False
+                                st.success("Saved.")
+                                st.rerun()
+                    with cc:
+                        if st.button("Cancel", key=f"lib_canceledit_{nid}"):
+                            st.session_state[edit_key] = False
+                            st.rerun()
                 else:
-                    st.caption(f"Only {by} can delete this note.")
+                    # ── Read mode ──
+                    show_raw = st.toggle("Show raw text", key=f"lib_raw_{nid}", value=False)
+                    if show_raw:
+                        st.text_area("Note text", value=content, height=300,
+                                     key=f"lib_read_{nid}", label_visibility="collapsed")
+                    else:
+                        st.markdown(format_note_text(content))
+
+                    # Generate questions straight from this note
+                    st.markdown("**Generate from this note:**")
+                    g1, g2, g3 = st.columns(3)
+                    topic_for_gen = f"{cat} :: {title}" if cat and cat != "Uncategorised" else title
+                    with g1:
+                        if st.button("📝 MCQs", key=f"lib_gen_mcq_{nid}"):
+                            with st.spinner("Generating MCQs…"):
+                                generate_section("mcq", content, topic_for_gen)
+                            st.success("MCQs generated — see the MCQ & Mock Exam tabs.")
+                    with g2:
+                        if st.button("🗣️ Viva", key=f"lib_gen_viva_{nid}"):
+                            with st.spinner("Generating viva…"):
+                                generate_section("viva", content, topic_for_gen)
+                            st.success("Viva generated — see the Viva tab picker.")
+                    with g3:
+                        if st.button("🗂️ Anki", key=f"lib_gen_anki_{nid}"):
+                            with st.spinner("Generating Anki cards…"):
+                                generate_section("anki", content, topic_for_gen)
+                            st.success("Anki generated — see the Anki tab.")
+
+                    # Edit + Delete row
+                    st.markdown("---")
+                    ec1, ec2 = st.columns(2)
+                    with ec1:
+                        if st.button("✏️ Edit note", key=f"lib_edit_{nid}"):
+                            st.session_state[edit_key] = True
+                            st.rerun()
+                    with ec2:
+                        if by == lib_user:
+                            if st.button("🗑️ Delete this note", key=f"lib_del_{nid}"):
+                                delete_library_note(nid)
+                                st.rerun()
+                        else:
+                            st.caption(f"Only {by} can delete.")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
