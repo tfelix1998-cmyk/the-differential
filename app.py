@@ -850,22 +850,31 @@ def calculate_streak(user=None):
 def build_heatmap_html(days=182, user=None):
     today = date.today()
     activity = {}
-    if user:
-        _rows = c.execute("""SELECT date(timestamp), COUNT(*) FROM (
-            SELECT timestamp FROM mcq_attempts WHERE user=? UNION ALL
-            SELECT timestamp FROM viva_reviews WHERE user=?
-        ) GROUP BY date(timestamp)""", (user, user)).fetchall()
-    else:
-        _rows = c.execute("""SELECT date(timestamp), COUNT(*) FROM (
-            SELECT timestamp FROM mcq_attempts UNION ALL SELECT timestamp FROM viva_reviews
-        ) GROUP BY date(timestamp)""").fetchall()
-    for d_str, cnt in _rows:
-        activity[d_str] = cnt
+    # Use the permanent (Supabase-first) data so history survives restarts
+    try:
+        all_events = []
+        if user:
+            all_events += [a.get("ts") for a in fetch_attempts(user) if a.get("ts")]
+            all_events += [v.get("ts") for v in fetch_viva(user) if v.get("ts")]
+        for ts in all_events:
+            d_str = str(ts)[:10]  # YYYY-MM-DD
+            activity[d_str] = activity.get(d_str, 0) + 1
+    except Exception:
+        activity = {}
+
+    # Green gradient: more activity -> darker, richer green
+    def cell_colour(cnt):
+        if cnt <= 0:   return "#2E2A22"   # empty
+        if cnt <= 2:   return "#9BE08B"   # light green (1-2)
+        if cnt <= 5:   return "#5FC96F"   # medium (3-5)
+        if cnt <= 9:   return "#2F9E41"   # dark (6-9)
+        return "#176127"                  # darkest (10+)
+
     cells = []
     for i in range(days - 1, -1, -1):
         d = today - timedelta(days=i)
         cnt = activity.get(d.isoformat(), 0)
-        color = ["#2E2A22","#C6E48B","#7BC96F","#239A3B","#196127"][min(cnt//3, 4)] if cnt else "#2E2A22"
+        color = cell_colour(cnt)
         cells.append(f'<div class="heatmap-cell" style="background:{color}" title="{d.strftime("%b %d")}: {cnt}"></div>')
     return f'<div class="heatmap-grid">{"".join(cells)}</div>'
 
@@ -1182,18 +1191,19 @@ with tab_dash:
 
         # ── Progress over time: rolling accuracy ──
         dated = [a for a in attempts if a.get("ts")]
-        if len(dated) >= 5:
-            st.markdown("#### 📈 Accuracy over time")
-            def _day(ts):
-                return str(ts)[:10]
-            by_day = {}
-            for a in dated:
-                d = _day(a["ts"])
-                by_day.setdefault(d, [0, 0])
-                by_day[d][1] += 1
-                if a.get("is_correct"):
-                    by_day[d][0] += 1
-            days_sorted = sorted(by_day.keys())
+        st.markdown("#### 📈 Accuracy over time")
+        def _day(ts):
+            return str(ts)[:10]
+        by_day = {}
+        for a in dated:
+            d = _day(a["ts"])
+            by_day.setdefault(d, [0, 0])
+            by_day[d][1] += 1
+            if a.get("is_correct"):
+                by_day[d][0] += 1
+        days_sorted = sorted(by_day.keys())
+
+        if len(days_sorted) >= 2:
             rows = [{"Date": d, "Accuracy %": round(by_day[d][0] / by_day[d][1] * 100, 1)}
                     for d in days_sorted]
             try:
@@ -1201,6 +1211,13 @@ with tab_dash:
                 st.line_chart(df_prog, height=220)
             except Exception:
                 pass
+        elif len(days_sorted) == 1:
+            d = days_sorted[0]
+            day_pct = round(by_day[d][0] / by_day[d][1] * 100, 1)
+            st.info(f"📊 Today's accuracy: **{day_pct}%** ({by_day[d][0]}/{by_day[d][1]}). "
+                    f"Come back tomorrow — the trend line appears once you've studied on 2+ days.")
+        else:
+            st.caption("Your accuracy trend will appear here once you've answered some MCQs.")
         st.markdown("")
 
     # ── Flagged questions: things you rated 👎 or left notes on ──
@@ -1231,8 +1248,16 @@ with tab_dash:
     st.markdown("#### 📅 Activity Heatmap")
     st.markdown(
         '<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;padding:20px 24px;">'
-        + build_heatmap_html(user=du) +
-        '<div style="font-size:0.75rem;color:#8A8070;margin-top:6px;">⬜ None &nbsp; 🟩 1–2 &nbsp; 🟩 3–7 &nbsp; 🟩 8+</div>'
+        + build_heatmap_html(days=119, user=du) +
+        '<div style="font-size:0.75rem;color:#8A8070;margin-top:10px;display:flex;align-items:center;gap:6px;">'
+        'Less'
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#2E2A22;"></span>'
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#9BE08B;"></span>'
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#5FC96F;"></span>'
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#2F9E41;"></span>'
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#176127;"></span>'
+        'More &nbsp;·&nbsp; darker = more questions that day'
+        '</div>'
         '</div>', unsafe_allow_html=True
     )
     st.markdown("")
