@@ -21,6 +21,10 @@ try:
     from builtin_questions import BUILTIN_VIVA
 except Exception:
     BUILTIN_VIVA = {}
+try:
+    from procedures import BUILTIN_PROCEDURES
+except Exception:
+    BUILTIN_PROCEDURES = {}
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="The Differential", page_icon="🧠", layout="wide")
@@ -245,6 +249,10 @@ except Exception:
 c.execute("""CREATE TABLE IF NOT EXISTS library_notes (
     id INTEGER PRIMARY KEY, title TEXT, category TEXT, subtopic TEXT,
     content TEXT, uploaded_by TEXT DEFAULT 'Terry',
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+c.execute("""CREATE TABLE IF NOT EXISTS procedures (
+    id INTEGER PRIMARY KEY, name TEXT, steps_json TEXT,
+    added_by TEXT DEFAULT 'Terry',
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
 conn.commit()
 
@@ -585,6 +593,78 @@ def delete_library_note(note_id):
         conn.commit()
     except Exception:
         pass
+
+
+def list_user_procedures():
+    """Return list of {id, name, steps(list), added_by} for user-added procedures."""
+    rows = []
+    if SUPABASE_ENABLED:
+        try:
+            res = supabase.table("procedures").select(
+                "id, name, steps_json, added_by").order("name").execute()
+            rows = res.data
+        except Exception:
+            rows = []
+    if not rows:
+        raw = c.execute("SELECT id, name, steps_json, added_by FROM procedures ORDER BY name").fetchall()
+        rows = [{"id": r[0], "name": r[1], "steps_json": r[2], "added_by": r[3]} for r in raw]
+    out = []
+    for r in rows:
+        try:
+            steps = json.loads(r.get("steps_json") or "[]")
+        except Exception:
+            steps = []
+        out.append({"id": r.get("id"), "name": r.get("name"),
+                    "steps": steps, "added_by": r.get("added_by")})
+    return out
+
+
+def save_user_procedure(name, steps, added_by):
+    name = clean_text(name)
+    steps = [clean_text(s) for s in steps if s.strip()]
+    payload_steps = json.dumps(steps)
+    if SUPABASE_ENABLED:
+        try:
+            supabase.table("procedures").insert({
+                "name": name, "steps_json": payload_steps, "added_by": added_by,
+            }).execute()
+            return True
+        except Exception as e:
+            st.error(f"Save failed: {e}")
+            return False
+    try:
+        c.execute("INSERT INTO procedures (name, steps_json, added_by) VALUES (?,?,?)",
+                  (name, payload_steps, added_by))
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Save failed: {e}")
+        return False
+
+
+def delete_user_procedure(proc_id):
+    if SUPABASE_ENABLED:
+        try:
+            supabase.table("procedures").delete().eq("id", proc_id).execute()
+            return
+        except Exception:
+            pass
+    try:
+        c.execute("DELETE FROM procedures WHERE id=?", (proc_id,))
+        conn.commit()
+    except Exception:
+        pass
+
+
+def all_procedures():
+    """Merge built-in procedures with user-added ones into a single dict-like list:
+    [(name, steps, source, ref)]. source 'builtin' or 'user'."""
+    items = []
+    for name, steps in BUILTIN_PROCEDURES.items():
+        items.append((name, steps, "builtin", name))
+    for p in list_user_procedures():
+        items.append((p["name"], p["steps"], "user", p["id"]))
+    return items
 
 
 def update_library_note(note_id, title, category, subtopic, content):
@@ -1116,8 +1196,8 @@ if st.session_state.get("gen_errors"):
         st.error(f"⚠️ Generation issue → {err}")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_library, tab_help = st.tabs(
-    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "📚  Library", "❓  How to use"]
+tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_library, tab_proc, tab_help = st.tabs(
+    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "📚  Library", "🩺  Procedures", "❓  How to use"]
 )
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2194,10 +2274,104 @@ with tab_library:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# HELP TAB — how the site works, for Terry, Alex, or anyone new
+# PROCEDURES TAB — two-phase procedural-skills practice
+#   Phase 1: tick off the steps as you run through them
+#   Phase 2: write the steps from memory, then reveal and compare
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_help:
-    st.markdown("### ❓ How to use The Differential")
+with tab_proc:
+    st.markdown("### 🩺 Procedural Skills")
+    st.caption("Practise OSCE procedures two ways: tick-the-steps, or write them from memory and compare. "
+               "Checklists are study aids — always defer to your local clinical guidelines and supervisor.")
+
+    procs = all_procedures()
+
+    # ── Add your own procedure ──
+    with st.expander("➕ Add your own procedure"):
+        np_name = st.text_input("Procedure name (use 'Category :: Name' to group it)",
+                                placeholder="e.g. Catheters & Tubes :: Chest Drain", key="np_name")
+        np_steps = st.text_area("Steps — one per line, in order", height=200,
+                                placeholder="Wash hands\nIntroduce yourself\nConfirm patient identity\n...",
+                                key="np_steps")
+        if st.button("💾 Save procedure", key="np_save", type="primary"):
+            steps = [s for s in (np_steps or "").split("\n") if s.strip()]
+            if not np_name.strip():
+                st.warning("Please give the procedure a name.")
+            elif len(steps) < 2:
+                st.warning("Please add at least two steps (one per line).")
+            else:
+                if save_user_procedure(np_name.strip(), steps, current_user):
+                    st.success(f"✅ Saved “{np_name.strip()}”. Select it below.")
+                    st.rerun()
+
+    if not procs:
+        st.info("No procedures yet. Add one above.")
+    else:
+        # ── Category filter + procedure picker ──
+        proc_cats = {}
+        for name, steps, source, ref in procs:
+            cat, disp = split_category(name)
+            proc_cats.setdefault(cat, []).append((disp, name, steps, source, ref))
+
+        cat_pick = st.selectbox("Category", ["All categories"] + sorted(proc_cats.keys()),
+                                key="proc_cat_filter")
+        shown_cats = sorted(proc_cats.keys()) if cat_pick == "All categories" else [cat_pick]
+
+        choices = []
+        for cat in shown_cats:
+            for disp, name, steps, source, ref in sorted(proc_cats[cat]):
+                label = f"{cat} › {disp}" if cat_pick == "All categories" else disp
+                choices.append((label, name, steps, source, ref))
+
+        labels = ["—"] + [c[0] for c in choices]
+        picked_label = st.selectbox("Procedure", labels, key="proc_pick")
+
+        if picked_label != "—":
+            _, pname, psteps, psource, pref = next(c for c in choices if c[0] == picked_label)
+
+            mode = st.radio("Practice mode",
+                            ["✅ Phase 1 — Tick the steps", "✍️ Phase 2 — Write from memory"],
+                            key=f"proc_mode_{pref}")
+
+            st.markdown(f"#### {split_category(pname)[1]}")
+            st.caption(f"{len(psteps)} steps")
+
+            if mode.startswith("✅"):
+                # ── Phase 1: checklist ──
+                done = 0
+                for i, step in enumerate(psteps):
+                    if st.checkbox(f"**{i+1}.** {step}", key=f"p1_{pref}_{i}"):
+                        done += 1
+                st.markdown("---")
+                pct = (done / len(psteps) * 100) if psteps else 0
+                st.progress(pct / 100, text=f"{done}/{len(psteps)} steps ticked ({pct:.0f}%)")
+                if done == len(psteps) and len(psteps) > 0:
+                    st.success("✅ All steps complete — nicely done.")
+            else:
+                # ── Phase 2: write from memory, then reveal ──
+                st.caption("Write out the steps in order from memory, then reveal the checklist to compare.")
+                st.text_area("Your steps", height=260, key=f"p2_input_{pref}",
+                             placeholder="1. ...\n2. ...\n3. ...")
+                if st.button("👁️ Reveal model checklist", key=f"p2_reveal_{pref}"):
+                    st.session_state[f"p2_revealed_{pref}"] = True
+                if st.session_state.get(f"p2_revealed_{pref}"):
+                    st.markdown("---")
+                    st.markdown("**Model checklist:**")
+                    for i, step in enumerate(psteps):
+                        st.markdown(f"**{i+1}.** {step}")
+                    st.info("Compare against your own list — note any steps you missed or had out of order. "
+                            "Self-assessment only; nothing is recorded.")
+
+            # Delete (user-added only, by the person who added it)
+            if psource == "user":
+                st.markdown("---")
+                up = next((p for p in list_user_procedures() if p["id"] == pref), None)
+                if up and up.get("added_by") == current_user:
+                    if st.button("🗑️ Delete this procedure", key=f"proc_del_{pref}"):
+                        delete_user_procedure(pref)
+                        st.rerun()
+
+
+
     st.caption("A quick guide for anyone using this study tool.")
 
     st.markdown("""
