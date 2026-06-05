@@ -2371,7 +2371,11 @@ with tab_proc:
                         st.rerun()
 
 
-
+# ═════════════════════════════════════════════════════════════════════════════
+# HELP TAB — how the site works, for Terry, Alex, or anyone new
+# ═════════════════════════════════════════════════════════════════════════════
+with tab_help:
+    st.markdown("### ❓ How to use The Differential")
     st.caption("A quick guide for anyone using this study tool.")
 
     st.markdown("""
@@ -2399,7 +2403,8 @@ and progress are tracked separately. The question banks themselves are shared.
 - **MCQ** — multiple-choice. Exam mode (timed, with a question navigator and mark-for-review) or review mode. You can also leave 👍/👎 feedback and notes on each question.
 - **Anki** — exports cloze-deletion flashcards you can import into the Anki app.
 - **Mock Exam** — build a custom exam by picking topics from your saved banks. Instant, no AI cost.
-- **Library** — shared reference notes. Upload a PDF; it stores the text (the original PDF stays on your device). You can read notes here and generate questions straight from them.
+- **Library** — shared reference notes. Upload a PDF or paste text; it stores the text (the original PDF stays on your device). You can read notes here and generate questions straight from them.
+- **Procedures** — practise OSCE procedural skills two ways: Phase 1 ticks off the steps as a checklist; Phase 2 hides them so you write the steps from memory then reveal and compare. You can add your own procedures too.
 
 #### 🏷️ Categories
 When uploading or naming a bank, you can file things under a **Category** and **Subtopic**
