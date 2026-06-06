@@ -1956,6 +1956,19 @@ with tab_mock:
             with col_mode:
                 exam_style = st.radio("Mode", ["⏱️ Timed exam", "📖 Untimed review"],
                                       label_visibility="visible")
+                secs_per_q = st.number_input(
+                    "Seconds per question (timed mode)",
+                    min_value=10, max_value=600, value=75, step=5,
+                    help="Set this to mirror your real exam. e.g. a 60-min exam given over 75 min "
+                         "for ~50 questions is about 90 seconds per question. The total time = "
+                         "seconds × number of questions.")
+
+            # Show the resulting total time so you can match your real exam
+            if exam_style.startswith("⏱️") and pool_size > 0:
+                total_secs = int(secs_per_q) * num_q
+                mins = total_secs // 60
+                st.caption(f"⏱ Total exam time: {mins} min {total_secs % 60} sec "
+                           f"({num_q} questions × {int(secs_per_q)}s each)")
 
             st.markdown("")
             if pool_size > 0 and st.button("🎯 Start Mock Exam", type="primary", use_container_width=True):
@@ -1967,6 +1980,8 @@ with tab_mock:
                 st.session_state["mock_marked"] = set()
                 st.session_state["mock_running"] = True
                 st.session_state["mock_timed"] = exam_style.startswith("⏱️")
+                st.session_state["mock_secs_per_q"] = int(secs_per_q)
+                st.session_state["mock_limit"] = int(secs_per_q) * num_q
                 st.session_state["mock_start"] = time.time()
                 st.rerun()
 
@@ -2010,8 +2025,27 @@ with tab_mock:
             attempted = len(submitted)
             correct_n = sum(1 for v in submitted.values() if v["correct"])
             pct = ((idx + 1) / total) * 100
-            timer_html = (f'<span style="font-weight:700;color:#8A8070;font-family:monospace;font-size:1rem;">⏱ {fmt_time(elapsed)}</span>'
-                          if timed else '<span style="color:#8A8070;font-size:0.85rem;">Untimed</span>')
+            # Countdown against the set limit (if one exists), else count up
+            limit = st.session_state.get("mock_limit", 0)
+            if timed and limit > 0:
+                remaining = limit - elapsed
+                if remaining <= 0:
+                    timer_html = ('<span style="font-weight:700;color:#EF5350;font-family:monospace;'
+                                  'font-size:1rem;">⏱ TIME UP</span>')
+                else:
+                    # gold normally, orange under 5 min, red under 1 min
+                    tcol = "#C9A84C"
+                    if remaining < 60:
+                        tcol = "#EF5350"
+                    elif remaining < 300:
+                        tcol = "#E0913C"
+                    timer_html = (f'<span style="font-weight:700;color:{tcol};font-family:monospace;'
+                                  f'font-size:1rem;">⏱ {fmt_time(remaining)} left</span>')
+            elif timed:
+                timer_html = (f'<span style="font-weight:700;color:#8A8070;font-family:monospace;'
+                              f'font-size:1rem;">⏱ {fmt_time(elapsed)}</span>')
+            else:
+                timer_html = '<span style="color:#8A8070;font-size:0.85rem;">Untimed</span>'
             st.markdown(
                 f'<div style="display:flex;justify-content:space-between;align-items:center;'
                 f'background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
@@ -2022,6 +2056,11 @@ with tab_mock:
                 f'{timer_html}</div>',
                 unsafe_allow_html=True
             )
+
+            # Time-up notice (does not force-end — you can keep going for practice)
+            if timed and limit > 0 and (limit - elapsed) <= 0:
+                st.warning("⏱ Time's up — in the real exam you'd stop here. "
+                           "You can keep answering for practice; your result still records.")
 
             mcq = mqs[idx]
             correct_letter = mcq["correct_answer_letter"].strip().upper()
