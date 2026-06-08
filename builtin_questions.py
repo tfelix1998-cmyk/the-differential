@@ -723,3 +723,10 @@ BUILTIN_VIVA = {
     # "Antibiotics Viva": [ { "question": ..., "answer": ... } ],
 
 }
+# ── Imported banks (auto-generated from revision notes) ──
+try:
+    from imported_questions import IMPORTED_BANKS, IMPORTED_VIVA
+    BUILTIN_BANKS.update(IMPORTED_BANKS)
+    BUILTIN_VIVA.update(IMPORTED_VIVA)
+except Exception:
+    pass
