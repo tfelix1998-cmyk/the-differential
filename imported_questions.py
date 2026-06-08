@@ -3,7 +3,7 @@ MCQ: 529 | Viva: 1036. Merge via builtin_questions.py (see note).
 """
 
 IMPORTED_BANKS = {
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Emergency Medicine, Care and Triage (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Emergency Medicine, Care and Triage (MCQ)': [
         {
             'question_text': 'A first-year intern doctor is reviewing the clinical objectives of the emergency department. According to the definition established by the International Federation for Emergency Medicine (IFEM) in 1991, which of the following best characterizes the scope of Emergency Medicine?',
             'options': [
@@ -495,7 +495,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Anaphylaxis (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Anaphylaxis (MCQ)': [
         {
             'question_text': 'A 24-year-old female presents to the emergency department with sudden-onset dyspnea, facial swelling, and diffuse urticaria 10 minutes after eating a peanut butter cookie. Physiologically, this reaction is driven by the cross-linking of surface receptors on tissue-bound immune cells. Which cell type and location represent the primary driver of this classic immediate hypersensitivity reaction?',
             'options': [
@@ -987,7 +987,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Toxicology (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Toxicology (MCQ)': [
         {
             'question_text': 'A 24-year-old male is brought to the emergency department via ambulance following an unwitnessed ingestion of an unknown pharmaceutical substance. He is obtunded, and the team is preparing to manage him. According to the standardized toxicology management framework, which of the following sequences represents the correct progression of the RRSIDEAD acronym? ( )',
             'options': [
@@ -1479,7 +1479,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Emergency Mental Health Presentations (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Emergency Mental Health Presentations (MCQ)': [
         {
             'question_text': 'A 24-year-old male is transported to a metropolitan emergency department by the Queensland Ambulance Service (QAS) after being found walking along a highway, expressing vague plans to harm himself. The paramedics hand over an Emergency Examination Authority (EEA) form. Under which legislation and section is this authority enacted?',
             'options': [
@@ -1971,7 +1971,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Major Trauma (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Major Trauma (MCQ)': [
         {
             'question_text': "A 42-year-old male is brought to an emergency department in Queensland following a high-speed motor vehicle collision. He has sustained multiple blunt force injuries. According to the demographic data from the Australian and New Zealand trauma registries, which of the following statements best describes this patient's profile?",
             'options': [
@@ -2505,7 +2505,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - The Breathless Patient (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - The Breathless Patient (MCQ)': [
         {
             'question_text': 'An 18-year-old female presents to the emergency department with acute breathlessness. On arrival, the nurse notes she is highly anxious. Her vital signs are: respiratory rate 28 breaths per minute, heart rate 115 beats per minute, blood pressure 120/80 mmHg, and oxygen saturation 94% on room air. Which of the following is the most appropriate next step in the clinical reasoning process for this patient?',
             'options': [
@@ -2997,7 +2997,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Chest Pain (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Chest Pain (MCQ)': [
         {
             'question_text': 'A 55-year-old male presents with central crushing chest pain radiating to his left jaw. His vital signs are stable, and an initial 12-lead ECG is non-ischemic. What is the most appropriate next step in his clinical monitoring?',
             'options': [
@@ -3489,7 +3489,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Arrhythmia (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Arrhythmia (MCQ)': [
         {
             'question_text': 'A 24-year-old female athlete presents to the emergency department with a history of brief, self-limiting palpitations. She is currently asymptomatic. Her ECG reveals a regular narrow-complex rhythm with a rate of 52 beats per minute. Which of the following best describes the physiological basis of this rhythm?',
             'options': [
@@ -3981,7 +3981,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Altered Level of Consciousness (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Altered Level of Consciousness (MCQ)': [
         {
             'question_text': 'A 45-year-old female presents to the Emergency Department following a traumatic brain injury. An intracranial pressure (ICP) monitor is inserted. Initial readings show a stable ICP of 12 mmHg. However, over the next hour, a small epidural hematoma expansion of only 15 mL results in a sudden, dramatic spike in ICP to 45 mmHg. Which of the following physiological principles best explains this sudden non-linear pressure increase?',
             'options': [
@@ -4487,7 +4487,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Stroke and Subarachnoid Haemorrhage (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Stroke and Subarachnoid Haemorrhage (MCQ)': [
         {
             'question_text': 'A 65-year-old male presents to the emergency department after experiencing a sudden episode of right-hand weakness and slurred speech while having breakfast. By the time he is assessed by the emergency intern 45 minutes later, his symptoms have completely resolved, and his neurological examination is normal. What is the clinical timeline of symptom resolution that defines a transient ischemic attack (TIA)?',
             'options': [
@@ -4979,7 +4979,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Traumatic Brain Injury (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Traumatic Brain Injury (MCQ)': [
         {
             'question_text': "A 24-year-old male is brought to an Australian emergency department by paramedics after being punched in the head during an altercation. On initial assessment, he opens his eyes only to painful stimuli, utters inappropriate words, and localizes painful stimuli with his motor response. His pupils are equal and reactive. Based on his Glasgow Coma Scale (GCS) score, how should this patient's traumatic brain injury (TBI) be classified?",
             'options': [
@@ -5471,7 +5471,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Procedures (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Procedures (MCQ)': [
         {
             'question_text': 'A 24-year-old male is admitted to the emergency department with suspected diabetic ketoacidosis. The supervising registrar asks you, a first-year intern, to perform an arterial blood gas (ABG) to assess his acid-base status. Although you have watched the procedure twice, you have never performed an ABG independently on a patient. What is the most appropriate next step in your preparation?',
             'options': [
@@ -5963,7 +5963,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Principles of Ultrasound in Critical Care (MCQ)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Principles of Ultrasound in Critical Care (MCQ)': [
         {
             'question_text': 'An intern doctor is setting up an ultrasound machine to obtain peripheral intravenous access on a patient with difficult venous access. While adjusting the depth, they recall the physical principles of ultrasound image generation. How does the ultrasound machine calculate the distance of an underlying structure from the transducer?',
             'options': [
@@ -6455,7 +6455,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Anaesthesia and Pain Management - Introduction to Anaesthesia (MCQ)': [
+    'UQ Critical Care Module :: Anaesthesia and Pain Management - Introduction to Anaesthesia (MCQ)': [
         {
             'question_text': 'A first-year intern doctor is preparing for their upcoming clinical rotation in anesthesia. To ensure they are well-oriented to the specialty and understand what to expect on their placement, they refer to the introductory learning materials. According to the clinical module, when is it recommended that the intern complete this introductory module?',
             'options': [
@@ -6947,7 +6947,7 @@ IMPORTED_BANKS = {
             'image_url': '',
         },
     ],
-    'UQ Critical Care Module - Anaesthesia and Pain Management - Preoperative Anaesthetic Assessment (MCQ)': [
+    'UQ Critical Care Module :: Anaesthesia and Pain Management - Preoperative Anaesthetic Assessment (MCQ)': [
         {
             'question_text': 'A 45-year-old female presents to the pre-admission clinic prior to elective laparoscopic cholecystectomy. As the intern conducting the pre-anesthetic assessment, you are explaining the goals of this evaluation. Which of the following represents the primary goals of the pre-anesthetic assessment according to clinical guidelines?',
             'options': [
@@ -7442,7 +7442,7 @@ IMPORTED_BANKS = {
 }
 
 IMPORTED_VIVA = {
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Emergency Medicine, Care and Triage (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Emergency Medicine, Care and Triage (VIVA)': [
         {
             'question': 'What is the definition of Emergency Medicine as declared by the International Federation for Emergency Medicine (IFEM) in 1991?',
             'answer': "Anything and everything that rolls through the emergency department's front door is considered part of emergency medicine.",
@@ -7732,7 +7732,7 @@ IMPORTED_VIVA = {
             'answer': 'They can assist the family by organizing accommodation, arranging travel to the receiving hospital, and helping them recuperate associated travel costs from the hospital system.',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Anaphylaxis (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Anaphylaxis (VIVA)': [
         {
             'question': 'What is the clinical definition of anaphylaxis?',
             'answer': 'It is the prototypical, archetypal, immediate type 1 allergic hypersensitivity reaction that can kill.',
@@ -7954,7 +7954,7 @@ IMPORTED_VIVA = {
             'answer': 'The testing is not highly accurate and has high rates of false positives and false negatives.\nIt carries a risk of causing catastrophic or fatal systemic reactions during testing or immunotherapy/desensitization. It must only be performed by specialists.',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Toxicology (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Toxicology (VIVA)': [
         {
             'question': 'What are the objectives of clinical toxicology assessment and management?',
             'answer': 'Understand a standardized approach to toxicology assessment and management.\nUnderstand and compare toxidromes.\nApply toxicology assessments to key drugs of overdose.',
@@ -8240,7 +8240,7 @@ IMPORTED_VIVA = {
             'answer': 'Refer the patient to local drug and alcohol services.\nDiscuss rehabilitation options.\nProvide take-home naloxone kits prior to discharge.',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Emergency Mental Health Presentations (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Emergency Mental Health Presentations (VIVA)': [
         {
             'question': 'What typical patient cohorts present with mental health concerns to the emergency department?',
             'answer': 'Depressed patients\nSuicidal patients\nPatients with acute drug intoxication\nPatients with eating disorders\nBehaviorally disturbed patients',
@@ -8490,7 +8490,7 @@ IMPORTED_VIVA = {
             'answer': 'Placement in a safe, highly visible, and closely monitored environment.\nMaintaining a low threshold for continuous capnography (CO2 trace) monitoring.\nPerforming frequent blood pressure measurements and clinical observations.\nDocumenting formal sedation scores.\nRe-engaging the patient medically and psychiatrically as soon as it is clinically safe to do so.',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Major Trauma (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Major Trauma (VIVA)': [
         {
             'question': 'What is the focus of this introductory module?',
             'answer': 'The trauma system and process, initial assessment, and identifying life-threatening pathologies in major trauma.',
@@ -8804,7 +8804,7 @@ IMPORTED_VIVA = {
             'answer': 'Rapidly administer blood and blood products to a bleeding patient in a balanced ratio.\nMinimize the use of crystalloid fluids.\nDeliver hemostatic (damage control) resuscitation.\nActively manage Tranexamic Acid (TXA), calcium levels, coagulation abnormalities, and patient temperature (utilizing blood warmers to avoid hypothermia).',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - The Breathless Patient (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - The Breathless Patient (VIVA)': [
         {
             'question': 'What is the overall purpose of the clinical reasoning paradigm for a breathless patient?',
             'answer': "To simulate being at the patient's bedside so that the clinical reasoning is directly useful for next year's clinical practice.",
@@ -9098,7 +9098,7 @@ IMPORTED_VIVA = {
             'answer': 'Decrease preload: Administer Glyceryl Trinitrate (GTN).\nAssist ventilation: Administer supplemental oxygen and initiate Continuous Positive Airway Pressure (CPAP).\nDiuresis: Administer intravenous loop diuretics (e.g., Lasix/Frusemide) to offload fluid.',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Chest Pain (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Chest Pain (VIVA)': [
         {
             'question': 'What is the primary objective of the initial chest pain assessment in the emergency or critical care setting?',
             'answer': 'It is a rapid, focused process to establish whether the chest pain is cardiac in nature (such as acute coronary syndrome) or due to another serious, life-threatening cause.',
@@ -9508,7 +9508,7 @@ IMPORTED_VIVA = {
             'answer': 'Because they can be easily titrated, and their effects can be rapidly ceased if the blood pressure drops too quickly.',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Arrhythmia (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Arrhythmia (VIVA)': [
         {
             'question': 'What is the definition of an arrhythmia?',
             'answer': 'An abnormal heart rhythm (i.e., not sinus).',
@@ -9870,7 +9870,7 @@ IMPORTED_VIVA = {
             'answer': "The ECG must always be interpreted in the clinical context of the patient's immediate hemodynamics, identifying the underlying pathophysiology to guide appropriate acute and long-term management.",
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Altered Level of Consciousness (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Altered Level of Consciousness (VIVA)': [
         {
             'question': 'Define consciousness and its two main physiological components.',
             'answer': 'Consciousness is a physiological state in which neural processes allow a person to perceive, comprehend, and act on both the internal and external environment.\nTo remain conscious, the brain must integrate two functions:\n  Arousal (Wakefulness): Reflects how alert and interactive a person appears. It depends on the brainstem reticular activating system (RAS) and its thalamocortical connections.\n  Awareness: Reflects the content of consciousness and the capacity to think, remember, and interpret sensory input. This relies on widespread cortical networks, particularly in the frontal and parietal lobes.',
@@ -10056,7 +10056,7 @@ IMPORTED_VIVA = {
             'answer': 'Intravenous antiepileptic drugs such as Phenytoin or Levetiracetam are standard options.',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Stroke and Subarachnoid Haemorrhage (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Stroke and Subarachnoid Haemorrhage (VIVA)': [
         {
             'question': 'What clinical entities are covered in this clinical module?',
             'answer': 'Transient Ischemic Attack (TIA)\nIschemic stroke\nHemorrhagic stroke\nSubarachnoid hemorrhage (SAH)\nInterpretation of acute CT brain imaging',
@@ -10302,7 +10302,7 @@ IMPORTED_VIVA = {
             'answer': 'It is a calcium channel blocker initiated early in the admission to reduce the incidence and severity of delayed cerebral ischemia caused by arterial vasospasm, which typically occurs 7 to 10 days post-hemorrhage.',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Traumatic Brain Injury (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Traumatic Brain Injury (VIVA)': [
         {
             'question': 'Define traumatic brain injury (TBI) and provide examples of mechanisms.',
             'answer': 'TBI is a brain injury that occurs as a result of a direct or indirect force to the brain.\nExamples include blunt trauma from a punch, or rotational forces within the brain caused by a motorbike accident.',
@@ -10544,7 +10544,7 @@ IMPORTED_VIVA = {
             'answer': 'Surgical evacuation of large, superficial hematomas, including subdural, extradural, or intracerebral hemorrhages.',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Procedures (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Procedures (VIVA)': [
         {
             'question': 'What are the four main areas to prepare for any clinical procedure?',
             'answer': 'Prepare yourself\nPrepare the patient\nPrepare the equipment\nPrepare for what happens afterwards (post-procedure)',
@@ -10750,7 +10750,7 @@ IMPORTED_VIVA = {
             'answer': 'Creation of a false urethral passage, leading to bleeding and a lifetime requirement for regular urethral dilations',
         },
     ],
-    'UQ Critical Care Module - Emergency Medicine and Trauma - Principles of Ultrasound in Critical Care (VIVA)': [
+    'UQ Critical Care Module :: Emergency Medicine and Trauma - Principles of Ultrasound in Critical Care (VIVA)': [
         {
             'question': 'Who is the presenter of this module and what is his role?',
             'answer': 'Stuart Win, an emergency physician from the Fraser Coast (encompassing Hervey Bay and Maryborough Hospitals).',
@@ -11068,7 +11068,7 @@ IMPORTED_VIVA = {
             'answer': "Document the cannulation procedure in the patient's medical chart.",
         },
     ],
-    'UQ Critical Care Module - Anaesthesia and Pain Management - Introduction to Anaesthesia (VIVA)': [
+    'UQ Critical Care Module :: Anaesthesia and Pain Management - Introduction to Anaesthesia (VIVA)': [
         {
             'question': 'What is the title and focus of Module 1.2?',
             'answer': 'The title of the module is Module 1.2: Introduction to Anesthesia.\nIts focus is to orient students to the specialty of anesthesia and outline what to expect during their clinical placement.',
@@ -11282,7 +11282,7 @@ IMPORTED_VIVA = {
             'answer': 'Plan ahead for each day, arrive prepared with questions, and identify clear learning goals to discuss with the consultant anesthetist, utilizing the teaching time available during the maintenance phase of anesthesia.',
         },
     ],
-    'UQ Critical Care Module - Anaesthesia and Pain Management - Preoperative Anaesthetic Assessment (VIVA)': [
+    'UQ Critical Care Module :: Anaesthesia and Pain Management - Preoperative Anaesthetic Assessment (VIVA)': [
         {
             'question': "What are the clinical details of the patient presented in the module's scenario?",
             'answer': 'Mr. Goal is a 52-year-old male admitted electively for a large umbilical hernia repair.\nHe traveled from a rural area and was admitted a day prior to surgery for anesthetic and surgical review.',
