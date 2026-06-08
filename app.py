@@ -1105,14 +1105,27 @@ with st.sidebar:
         if q_file:
             with st.spinner("Reading questions…"):
                 import_questions_text = extract_text_from_pdf(q_file)
-            st.success(f"✅ Questions: {q_file.name}")
             _icat = imp_category.strip()
             _isub = imp_subtopic.strip() or q_file.name
             topic_name = f"{_icat} :: {_isub}" if _icat else _isub
+            if import_questions_text.strip():
+                st.success(f"✅ Questions: {q_file.name} ({len(import_questions_text):,} chars)")
+            else:
+                st.error(f"⚠️ {q_file.name}: no readable text found. "
+                         f"This is a scanned/image PDF — import needs selectable text. "
+                         f"See the note below.")
         if a_file:
             with st.spinner("Reading answer key…"):
                 import_answers_text = extract_text_from_pdf(a_file)
-            st.success(f"✅ Answers: {a_file.name}")
+            if import_answers_text.strip():
+                st.success(f"✅ Answers: {a_file.name} ({len(import_answers_text):,} chars)")
+            else:
+                st.error(f"⚠️ {a_file.name}: no readable text found (scanned/image PDF).")
+        # If either file uploaded but produced no text, explain the dead-end clearly
+        if (q_file or a_file) and not (import_questions_text.strip() or import_answers_text.strip()):
+            st.warning("📄 These PDFs are scanned images, so there's no text to import. "
+                       "Import only works on PDFs with selectable text. To use scanned papers, "
+                       "you'll need to OCR them first or paste the text in another way.")
 
     st.markdown("---")
     st.markdown("**🗓️ Exam Countdown**")
@@ -1526,7 +1539,19 @@ with tab_mcq:
                 st.rerun()
 
     if not pdf_ready and not import_ready and not st.session_state.get("mcqs"):
-        st.info("👈 Upload a PDF, import a paper, or load a saved bank above to begin.")
+        # More specific guidance if the user is mid-import
+        if app_mode == "📥 Import existing paper":
+            if (import_questions_text and not import_questions_text.strip()) or \
+               (import_answers_text and not import_answers_text.strip()):
+                st.info("📄 The uploaded PDF(s) have no readable text (scanned images), so there's "
+                        "nothing to import. Import needs PDFs with selectable text.")
+            elif bool(import_questions_text.strip()) ^ bool(import_answers_text.strip()):
+                st.info("Almost there — import needs **both** a questions PDF *and* an answer key PDF "
+                        "with readable text. Upload the missing one to continue.")
+            else:
+                st.info("👈 Upload both the questions PDF and the answer key PDF to import a paper.")
+        else:
+            st.info("👈 Upload a PDF, import a paper, or load a saved bank above to begin.")
     elif not st.session_state.get("mcqs"):
         if import_ready:
             st.markdown("### 📥 Import Existing Paper")
