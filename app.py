@@ -13,6 +13,7 @@ import pandas as pd
 from datetime import date, timedelta
 
 from prompts import VIVA_PROMPT, MCQ_PROMPT, ANKI_PROMPT, IMPORT_MCQ_PROMPT
+from psa import render_psa
 try:
     from builtin_questions import BUILTIN_BANKS
 except Exception:
@@ -1209,9 +1210,15 @@ if st.session_state.get("gen_errors"):
         st.error(f"⚠️ Generation issue → {err}")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_library, tab_proc, tab_help = st.tabs(
-    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "📚  Library", "🩺  Procedures", "❓  How to use"]
+tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_psa, tab_library, tab_proc, tab_help = st.tabs(
+    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "💊  PSA", "📚  Library", "🩺  Procedures", "❓  How to use"]
 )
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PSA TAB
+# ═════════════════════════════════════════════════════════════════════════════
+with tab_psa:
+    render_psa(c, conn, SUPABASE_ENABLED, supabase)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # DASHBOARD TAB
