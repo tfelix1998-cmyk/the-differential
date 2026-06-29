@@ -265,6 +265,11 @@ def get_db():
         id INTEGER PRIMARY KEY, name TEXT, steps_json TEXT,
         added_by TEXT DEFAULT 'Terry',
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+    # GSSE study progress: one JSON blob per user (plan status, last-reviewed,
+    # per-question accuracy). Small, so a single row per user is plenty.
+    cur.execute("""CREATE TABLE IF NOT EXISTS gsse_progress (
+        user TEXT PRIMARY KEY, data TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit()
     return conn
 
@@ -294,6 +299,45 @@ def get_supabase():
     return None, False
 
 supabase, SUPABASE_ENABLED = get_supabase()
+
+
+# ── GSSE progress persistence ──────────────────────────────────────────────────
+# Prefers Supabase (cloud, survives restarts); always writes SQLite as a fallback.
+# Progress is one JSON blob per user, so each load/save is a single read/write.
+def gsse_load_progress(user):
+    if SUPABASE_ENABLED and supabase is not None:
+        try:
+            res = supabase.table("gsse_progress").select("data").eq("user", user).limit(1).execute()
+            if res.data:
+                return res.data[0].get("data") or {}
+        except Exception:
+            pass
+    try:
+        row = c.execute("SELECT data FROM gsse_progress WHERE user=?", (user,)).fetchone()
+        if row and row[0]:
+            return json.loads(row[0])
+    except Exception:
+        pass
+    return {}
+
+
+def gsse_save_progress(progress, user):
+    # SQLite (always)
+    try:
+        c.execute(
+            "INSERT INTO gsse_progress (user, data) VALUES (?, ?) "
+            "ON CONFLICT(user) DO UPDATE SET data=excluded.data, timestamp=CURRENT_TIMESTAMP",
+            (user, json.dumps(progress)),
+        )
+        conn.commit()
+    except Exception:
+        pass
+    # Supabase (if enabled) — jsonb column takes the dict directly
+    if SUPABASE_ENABLED and supabase is not None:
+        try:
+            supabase.table("gsse_progress").upsert({"user": user, "data": progress}).execute()
+        except Exception:
+            pass
 
 
 def doc_fingerprint(pdf_text):
@@ -1243,7 +1287,11 @@ with tab_psa:
 # GSSE TAB
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_gsse:
-    render_gsse()
+    render_gsse(
+        persist_get=gsse_load_progress,
+        persist_set=gsse_save_progress,
+        user=st.session_state.get("current_user", "Terry"),
+    )
 
 # ═════════════════════════════════════════════════════════════════════════════
 # DASHBOARD TAB
