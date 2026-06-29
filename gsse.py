@@ -89,6 +89,11 @@ def _progress():
     return st.session_state["_gsse_progress"]
 
 
+def _mark_dirty():
+    """Flag that progress changed, so it gets persisted at the end of this run."""
+    st.session_state["_gsse_dirty"] = True
+
+
 def _sub_progress(subtopic_id):
     p = _progress()
     if subtopic_id not in p:
@@ -100,6 +105,7 @@ def _record_attempt(subtopic_id, question_id, correct, total):
     sp = _sub_progress(subtopic_id)
     sp["attempts"][question_id] = {"correct": correct, "total": total}
     sp["last_reviewed"] = _dt.date.today().isoformat()
+    _mark_dirty()
 
 
 def _subtopic_accuracy(subtopic_id):
@@ -134,19 +140,29 @@ def _science_readiness(science):
 
 
 # Optional persistence hooks ------------------------------------------------
-# Wire these to your SQLite/Supabase layer if you want cross-session progress.
-def _load_progress(persist_get):
-    if persist_get and "_gsse_progress" not in st.session_state:
-        try:
-            st.session_state["_gsse_progress"] = persist_get() or {}
-        except Exception:  # noqa: BLE001
-            st.session_state["_gsse_progress"] = {}
+# Wire these to your SQLite/Supabase layer for cross-session progress:
+#   persist_get(user) -> dict      load this user's saved progress
+#   persist_set(progress, user)    save it
+def _ensure_loaded(persist_get, user):
+    """Load progress once per user. Reloads if the user switches mid-session."""
+    if st.session_state.get("_gsse_loaded_user") != user:
+        loaded = {}
+        if persist_get:
+            try:
+                loaded = persist_get(user) or {}
+            except Exception:  # noqa: BLE001
+                loaded = {}
+        st.session_state["_gsse_progress"] = loaded
+        st.session_state["_gsse_loaded_user"] = user
+        st.session_state["_gsse_dirty"] = False
 
 
-def _save_progress(persist_set):
-    if persist_set:
+def _flush(persist_set, user):
+    """Persist only if something changed this run (keeps writes off the hot path)."""
+    if persist_set and st.session_state.get("_gsse_dirty"):
         try:
-            persist_set(_progress())
+            persist_set(_progress(), user)
+            st.session_state["_gsse_dirty"] = False
         except Exception as e:  # noqa: BLE001
             st.warning(f"Could not save progress: {e}")
 
@@ -255,6 +271,7 @@ def _subtopics_view(qindex):
             )
             if new_plan != sp["plan"]:
                 sp["plan"] = new_plan
+                _mark_dirty()
             label = (f"{acc*100:.0f}% · {n_q} q" if acc is not None
                      else (f"{n_q} q" if n_q else "no q yet"))
             c4.markdown(f"<span style='color:gray'>{label}</span>",
@@ -373,12 +390,14 @@ def _study_view(qindex):
 # Entry point
 # ---------------------------------------------------------------------------
 
-def render_gsse(persist_get=None, persist_set=None):
-    """Render the GSSE section. Optionally pass persistence callables:
-        persist_get() -> dict   (load saved progress once per session)
-        persist_set(dict)       (save current progress)
+def render_gsse(persist_get=None, persist_set=None, user=None):
+    """Render the GSSE section.
+
+    persist_get(user) -> dict     load saved progress (once per user per session)
+    persist_set(progress, user)   save progress (only when it changed this run)
+    user                          current user id (e.g. "Terry" / "Alex")
     """
-    _load_progress(persist_get)
+    _ensure_loaded(persist_get, user)
     _, qindex = _load_questions()
 
     view = st.session_state.get("_gsse_view", "topics")
@@ -389,7 +408,7 @@ def render_gsse(persist_get=None, persist_set=None):
     else:
         _topics_view(qindex)
 
-    _save_progress(persist_set)
+    _flush(persist_set, user)
 
 
 if __name__ == "__main__":
