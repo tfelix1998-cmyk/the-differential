@@ -1,0 +1,1399 @@
+{
+  "_meta": {
+    "description": "GSSE study structure for The Differential, modelled on the GSSE Roadmap Topic > Section > Subtopic tree, plus Pharmacology and RACS-completeness stubs.",
+    "hierarchy": "science > topic > section > subtopic",
+    "study_weight_pct": "Roadmap's within-science study weight (NOT the RACS exam-question weight; that lives in gsse_config.GSSE_CATEGORIES).",
+    "blocks": "Study-time units carried from the roadmap (1 block ~= one focused study session).",
+    "blueprint_codes": "Links each topic back to the RACS exam-blueprint categories in gsse_config.py for mock-exam assembly.",
+    "subtopic_id": "Stable slug 'topic-id/name-slug' — this is what a question's subtopic_id field references."
+  },
+  "topics": [
+    {
+      "id": "head-neck",
+      "name": "Head & Neck (w/CNS)",
+      "icon": "🧠",
+      "science": "ANATOMY",
+      "study_weight_pct": 23,
+      "blocks_total": 72,
+      "blueprint_codes": [
+        "ANA-NCK",
+        "ANA-HD",
+        "ANA-CNS"
+      ],
+      "sections": [
+        "Neck & Face",
+        "Head & CNS",
+        "ENT Eye Organs"
+      ],
+      "subtopics": [
+        {
+          "id": "head-neck/intro-to-neck",
+          "code": "1",
+          "name": "Intro to Neck",
+          "section": "Neck & Face",
+          "blocks": 3
+        },
+        {
+          "id": "head-neck/triangles-of-the-neck",
+          "code": "2",
+          "name": "Triangles of the Neck",
+          "section": "Neck & Face",
+          "blocks": 3
+        },
+        {
+          "id": "head-neck/strap-muscles-submandibular-gland-para-thyroid-trachea-and-oesophagus",
+          "code": "3",
+          "name": "Strap Muscles, Submandibular Gland, Para/Thyroid, Trachea and Oesophagus",
+          "section": "Neck & Face",
+          "blocks": 3
+        },
+        {
+          "id": "head-neck/great-vessels-of-the-neck",
+          "code": "4",
+          "name": "Great Vessels of the Neck",
+          "section": "Neck & Face",
+          "blocks": 4.5
+        },
+        {
+          "id": "head-neck/face",
+          "code": "6",
+          "name": "Face",
+          "section": "Neck & Face",
+          "blocks": 3
+        },
+        {
+          "id": "head-neck/scalp-temporal-fossa",
+          "code": "7",
+          "name": "Scalp & Temporal Fossa",
+          "section": "Neck & Face",
+          "blocks": 1.5
+        },
+        {
+          "id": "head-neck/parotid-region",
+          "code": "8",
+          "name": "Parotid Region",
+          "section": "Neck & Face",
+          "blocks": 1.5
+        },
+        {
+          "id": "head-neck/infratemporal-fossa",
+          "code": "9",
+          "name": "Infratemporal Fossa",
+          "section": "Neck & Face",
+          "blocks": 4.5
+        },
+        {
+          "id": "head-neck/carotid-sheath-cns-9-12",
+          "code": "10",
+          "name": "Carotid Sheath & CNs 9-12",
+          "section": "Neck & Face",
+          "blocks": 4.5
+        },
+        {
+          "id": "head-neck/pterygopalatine-fossa",
+          "code": "11",
+          "name": "Pterygopalatine Fossa",
+          "section": "Neck & Face",
+          "blocks": 3
+        },
+        {
+          "id": "head-neck/cranial-cavity-meninges",
+          "code": "12",
+          "name": "Cranial Cavity & Meninges",
+          "section": "Head & CNS",
+          "blocks": 4.5
+        },
+        {
+          "id": "head-neck/cavernous-sinus",
+          "code": "13",
+          "name": "Cavernous Sinus",
+          "section": "Head & CNS",
+          "blocks": 1.5
+        },
+        {
+          "id": "head-neck/cranial-fossa",
+          "code": "14",
+          "name": "Cranial Fossa",
+          "section": "Head & CNS",
+          "blocks": 4.5
+        },
+        {
+          "id": "head-neck/cns-blood-supply",
+          "code": "15",
+          "name": "CNS Blood Supply",
+          "section": "Head & CNS",
+          "blocks": 1.5
+        },
+        {
+          "id": "head-neck/cranial-nerves",
+          "code": "16",
+          "name": "Cranial Nerves",
+          "section": "Head & CNS",
+          "blocks": 6
+        },
+        {
+          "id": "head-neck/skull",
+          "code": "17",
+          "name": "Skull",
+          "section": "Head & CNS",
+          "blocks": 1.5
+        },
+        {
+          "id": "head-neck/mandible-hyoid",
+          "code": "18",
+          "name": "Mandible & Hyoid",
+          "section": "Head & CNS",
+          "blocks": 3
+        },
+        {
+          "id": "head-neck/nose-paranasal-sinus",
+          "code": "19",
+          "name": "Nose & Paranasal Sinus",
+          "section": "ENT Eye Organs",
+          "blocks": 3
+        },
+        {
+          "id": "head-neck/oral-cavity",
+          "code": "20",
+          "name": "Oral Cavity",
+          "section": "ENT Eye Organs",
+          "blocks": 1.5
+        },
+        {
+          "id": "head-neck/pharynx",
+          "code": "21",
+          "name": "Pharynx",
+          "section": "ENT Eye Organs",
+          "blocks": 3
+        },
+        {
+          "id": "head-neck/larynx",
+          "code": "22",
+          "name": "Larynx",
+          "section": "ENT Eye Organs",
+          "blocks": 3
+        },
+        {
+          "id": "head-neck/orbit-and-eye",
+          "code": "23",
+          "name": "Orbit and Eye",
+          "section": "ENT Eye Organs",
+          "blocks": 3
+        },
+        {
+          "id": "head-neck/tmj",
+          "code": "24",
+          "name": "TMJ",
+          "section": "ENT Eye Organs",
+          "blocks": 1.5
+        },
+        {
+          "id": "head-neck/ear",
+          "code": "25",
+          "name": "Ear",
+          "section": "ENT Eye Organs",
+          "blocks": 1.5
+        }
+      ],
+      "note": "Item 5 absent in source numbering. CNS brain/spinal-cord detail folded into Head & CNS section."
+    },
+    {
+      "id": "upper-limb-spine",
+      "name": "Upper Limb & Spine",
+      "icon": "💪",
+      "science": "ANATOMY",
+      "study_weight_pct": 15,
+      "blocks_total": 28,
+      "blueprint_codes": [
+        "ANA-UL",
+        "ANA-BCK"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "upper-limb-spine/pectoral-girdle",
+          "code": "1",
+          "name": "Pectoral Girdle",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "upper-limb-spine/shoulder",
+          "code": "2",
+          "name": "Shoulder",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "upper-limb-spine/axilla",
+          "code": "3",
+          "name": "Axilla",
+          "section": "General",
+          "blocks": 4
+        },
+        {
+          "id": "upper-limb-spine/breast",
+          "code": "4",
+          "name": "Breast",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "upper-limb-spine/anterior-arm",
+          "code": "5",
+          "name": "Anterior Arm",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "upper-limb-spine/posterior-arm",
+          "code": "6",
+          "name": "Posterior Arm",
+          "section": "General",
+          "blocks": 1
+        },
+        {
+          "id": "upper-limb-spine/anterior-forearm",
+          "code": "7",
+          "name": "Anterior Forearm",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "upper-limb-spine/posterior-forearm",
+          "code": "8",
+          "name": "Posterior Forearm",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "upper-limb-spine/wrist-and-hand",
+          "code": "9/10/11",
+          "name": "Wrist and Hand",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "upper-limb-spine/osteology-of-upper-limb",
+          "code": "12",
+          "name": "Osteology of Upper Limb",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "upper-limb-spine/qbank-learnings",
+          "code": "QB",
+          "name": "QBank Learnings",
+          "section": "General",
+          "blocks": 0
+        }
+      ],
+      "note": "Source bundles spine here but lists no spine subtopics; ANA-BCK content needs its own subtopics."
+    },
+    {
+      "id": "abdomen",
+      "name": "Abdomen",
+      "icon": "🔶",
+      "science": "ANATOMY",
+      "study_weight_pct": 15,
+      "blocks_total": 20.5,
+      "blueprint_codes": [
+        "ANA-ABD"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "abdomen/anterior-abd-wall",
+          "code": "1",
+          "name": "Anterior Abd Wall",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "abdomen/abdominal-cavity",
+          "code": "2",
+          "name": "Abdominal Cavity",
+          "section": "General",
+          "blocks": 1
+        },
+        {
+          "id": "abdomen/peritoneum-gut-development",
+          "code": "3/4",
+          "name": "Peritoneum & Gut Development",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "abdomen/vessels-and-nerves-of-gut",
+          "code": "5",
+          "name": "Vessels and Nerves of GUT",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "abdomen/gastrointestinal-tract",
+          "code": "6",
+          "name": "Gastrointestinal Tract",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "abdomen/liver-and-biliary-tract",
+          "code": "7",
+          "name": "Liver and Biliary Tract",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "abdomen/pancreas",
+          "code": "8",
+          "name": "Pancreas",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "abdomen/spleen",
+          "code": "9",
+          "name": "Spleen",
+          "section": "General",
+          "blocks": 7.5
+        }
+      ]
+    },
+    {
+      "id": "development-embryology",
+      "name": "Development & Embryology",
+      "icon": "🥚",
+      "science": "ANATOMY",
+      "study_weight_pct": 3,
+      "blocks_total": 3,
+      "blueprint_codes": [
+        "ANA-GEN"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "development-embryology/general",
+          "code": "1",
+          "name": "General",
+          "section": "General",
+          "blocks": 3
+        }
+      ]
+    },
+    {
+      "id": "lower-limb",
+      "name": "Lower Limb",
+      "icon": "🦵",
+      "science": "ANATOMY",
+      "study_weight_pct": 15,
+      "blocks_total": 19,
+      "blueprint_codes": [
+        "ANA-LL"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "lower-limb/anterior-compartment-of-thigh",
+          "code": "1",
+          "name": "Anterior Compartment of Thigh",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "lower-limb/medial-compartment-of-thigh",
+          "code": "2",
+          "name": "Medial Compartment of Thigh",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "lower-limb/gluteal-region-and-hip-joint",
+          "code": "3",
+          "name": "Gluteal Region and Hip Joint",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "lower-limb/posterior-compartment-of-thigh",
+          "code": "4",
+          "name": "Posterior Compartment of Thigh",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "lower-limb/popliteal-fossa-and-knee-joint",
+          "code": "5",
+          "name": "Popliteal Fossa and Knee Joint",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "lower-limb/extensor-compartment-of-leg",
+          "code": "6",
+          "name": "Extensor compartment of leg",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "lower-limb/dorsum-of-foot",
+          "code": "7",
+          "name": "Dorsum of Foot",
+          "section": "General",
+          "blocks": 1
+        },
+        {
+          "id": "lower-limb/lateral-compartment-of-leg",
+          "code": "8",
+          "name": "Lateral compartment of leg",
+          "section": "General",
+          "blocks": 1
+        },
+        {
+          "id": "lower-limb/posterior-compartment-of-leg",
+          "code": "9",
+          "name": "Posterior Compartment of Leg",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "lower-limb/sole-of-foot",
+          "code": "10",
+          "name": "Sole of Foot",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "lower-limb/ankle-joint-and-arches-of-the-foot",
+          "code": "11/12/13",
+          "name": "Ankle Joint and Arches of the Foot",
+          "section": "General",
+          "blocks": 1
+        }
+      ]
+    },
+    {
+      "id": "pelvis",
+      "name": "Pelvis",
+      "icon": "📙",
+      "science": "ANATOMY",
+      "study_weight_pct": 12,
+      "blocks_total": 31,
+      "blueprint_codes": [
+        "ANA-PEL"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "pelvis/posterior-abdominal-wall",
+          "code": "10",
+          "name": "Posterior Abdominal Wall",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "pelvis/kidneys-ureters-suprarenal-glands",
+          "code": "11",
+          "name": "Kidneys/Ureters/Suprarenal Glands",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "pelvis/pelvic-cavity",
+          "code": "12",
+          "name": "Pelvic Cavity",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "pelvis/rectum",
+          "code": "13",
+          "name": "Rectum",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "pelvis/bladder",
+          "code": "14",
+          "name": "Bladder",
+          "section": "General",
+          "blocks": 1
+        },
+        {
+          "id": "pelvis/testis-prostate-and-accessory-sex-organs",
+          "code": "15",
+          "name": "Testis + Prostate and Accessory Sex Organs",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "pelvis/female-internal-genital-organs-and-urethra",
+          "code": "16",
+          "name": "Female internal genital organs and urethra",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "pelvis/pelvic-nvs",
+          "code": "17",
+          "name": "Pelvic NVS",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "pelvis/perineum",
+          "code": "18",
+          "name": "Perineum",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "pelvis/male-urogenital-region",
+          "code": "19",
+          "name": "Male Urogenital Region",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "pelvis/female-urogenital-region",
+          "code": "20",
+          "name": "Female Urogenital Region",
+          "section": "General",
+          "blocks": 1
+        },
+        {
+          "id": "pelvis/pelvic-joints-and-ligaments",
+          "code": "21",
+          "name": "Pelvic Joints and Ligaments",
+          "section": "General",
+          "blocks": 1.5
+        }
+      ],
+      "note": "Subtopic numbering continues from the Abdomen topic: Abdomen holds 1-9, Pelvis holds 10-21. This is the COMPLETE set (12 subtopics), confirmed from the top of the page. Sum of blocks 32 vs stated total 31 = source rounding."
+    },
+    {
+      "id": "thorax",
+      "name": "Thorax",
+      "icon": "🫁",
+      "science": "ANATOMY",
+      "study_weight_pct": 15,
+      "blocks_total": 19.5,
+      "blueprint_codes": [
+        "ANA-THX"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "thorax/body-wall",
+          "code": "1",
+          "name": "Body Wall",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "thorax/thoracic-wall-and-diaphragm",
+          "code": "2",
+          "name": "Thoracic Wall and Diaphragm",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "thorax/overview-of-mediastinum",
+          "code": "3",
+          "name": "Overview of Mediastinum",
+          "section": "General",
+          "blocks": 1
+        },
+        {
+          "id": "thorax/superior-mediastinum",
+          "code": "4",
+          "name": "Superior Mediastinum",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "thorax/ant-mid-mediastinum-heart",
+          "code": "5_6",
+          "name": "Ant/Mid Mediastinum + Heart",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "thorax/posterior-mediastinum",
+          "code": "7",
+          "name": "Posterior Mediastinum",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "thorax/pleura-and-lungs",
+          "code": "8/9",
+          "name": "Pleura and Lungs",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "thorax/osteology-of-thorax",
+          "code": "10",
+          "name": "Osteology of Thorax",
+          "section": "General",
+          "blocks": 1.5
+        }
+      ],
+      "note": "Breast is placed under Upper Limb in this scheme (RACS lists it under Thorax)."
+    },
+    {
+      "id": "general-path",
+      "name": "General Path + Tissue Response to Injury",
+      "icon": "😶",
+      "science": "PATHOLOGY",
+      "study_weight_pct": 34,
+      "blocks_total": 24,
+      "blueprint_codes": [
+        "PAT-GEN"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "general-path/cell-growth-wound-healing",
+          "code": "1",
+          "name": "Cell Growth & Wound Healing",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "general-path/cell-injury-death-adaptation",
+          "code": "2",
+          "name": "Cell Injury & Death & Adaptation",
+          "section": "General",
+          "blocks": 7.5
+        },
+        {
+          "id": "general-path/haemodynamic-disorders-thrombosis",
+          "code": "3",
+          "name": "Haemodynamic Disorders, Thrombosis",
+          "section": "General",
+          "blocks": 6
+        },
+        {
+          "id": "general-path/inflammation",
+          "code": "4",
+          "name": "Inflammation",
+          "section": "General",
+          "blocks": 6
+        }
+      ]
+    },
+    {
+      "id": "immunology",
+      "name": "Immunology",
+      "icon": "🦠",
+      "science": "PATHOLOGY",
+      "study_weight_pct": 9,
+      "blocks_total": 13.5,
+      "blueprint_codes": [
+        "PAT-IMM"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "immunology/immunology-principles",
+          "code": "1",
+          "name": "Immunology Principles",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "immunology/specific-immunity",
+          "code": "2",
+          "name": "Specific Immunity",
+          "section": "General",
+          "blocks": 6
+        },
+        {
+          "id": "immunology/abnormal-immune-responses",
+          "code": "3",
+          "name": "Abnormal Immune Responses",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "immunology/qbank-learnings",
+          "code": "QB",
+          "name": "QBank Learnings",
+          "section": "General",
+          "blocks": 0
+        }
+      ]
+    },
+    {
+      "id": "neoplasia",
+      "name": "Neoplasia",
+      "icon": "🦀",
+      "science": "PATHOLOGY",
+      "study_weight_pct": 18,
+      "blocks_total": 16.5,
+      "blueprint_codes": [
+        "PAT-NEO"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "neoplasia/neoplasia",
+          "code": "1",
+          "name": "Neoplasia",
+          "section": "General",
+          "blocks": 7.5
+        },
+        {
+          "id": "neoplasia/important-cancers",
+          "code": "2",
+          "name": "Important Cancers",
+          "section": "General",
+          "blocks": 9
+        }
+      ]
+    },
+    {
+      "id": "microbiology",
+      "name": "Microbiology (Infection + Antibiotics)",
+      "icon": "🦠",
+      "science": "PATHOLOGY",
+      "study_weight_pct": 23,
+      "blocks_total": 24,
+      "blueprint_codes": [
+        "PAT-MIC"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "microbiology/antibiotics",
+          "code": "1",
+          "name": "Antibiotics",
+          "section": "General",
+          "blocks": 6
+        },
+        {
+          "id": "microbiology/antifungal-antiviral",
+          "code": "2",
+          "name": "Antifungal & Antiviral",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "microbiology/infectious-disease",
+          "code": "3",
+          "name": "Infectious Disease",
+          "section": "General",
+          "blocks": 6
+        },
+        {
+          "id": "microbiology/surgical-infections",
+          "code": "4",
+          "name": "Surgical Infections",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "microbiology/watching-atp-videos",
+          "code": "5",
+          "name": "Watching ATP videos",
+          "section": "General",
+          "blocks": 6
+        }
+      ]
+    },
+    {
+      "id": "metabolism-nutrition",
+      "name": "Metabolism/Nutrition (Cellular & Electrolytes)",
+      "icon": "🧍",
+      "science": "PHYSIOLOGY",
+      "study_weight_pct": 8,
+      "blocks_total": 4.5,
+      "blueprint_codes": [
+        "PHY-MET"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "metabolism-nutrition/cellular-physiology",
+          "code": "1",
+          "name": "Cellular Physiology",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "metabolism-nutrition/metabolism",
+          "code": "2",
+          "name": "Metabolism",
+          "section": "General",
+          "blocks": 1.5
+        }
+      ]
+    },
+    {
+      "id": "urinary",
+      "name": "Urinary",
+      "icon": "💧",
+      "science": "PHYSIOLOGY",
+      "study_weight_pct": 17,
+      "blocks_total": 15,
+      "blueprint_codes": [
+        "PHY-REN"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "urinary/renal-key-players",
+          "code": "1",
+          "name": "Renal Key Players",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "urinary/parts-of-the-nephron",
+          "code": "2",
+          "name": "Parts of the Nephron",
+          "section": "General",
+          "blocks": 6
+        },
+        {
+          "id": "urinary/na-k-homeostasis",
+          "code": "3",
+          "name": "Na/K Homeostasis",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "urinary/renal-acid-base",
+          "code": "4",
+          "name": "Renal Acid Base",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "urinary/qbank-learnings",
+          "code": "QB",
+          "name": "QBank Learnings",
+          "section": "General",
+          "blocks": 0
+        }
+      ]
+    },
+    {
+      "id": "neuromuscular",
+      "name": "Neuromuscular (CNS)",
+      "icon": "💪",
+      "science": "PHYSIOLOGY",
+      "study_weight_pct": 8,
+      "blocks_total": 5.5,
+      "blueprint_codes": [
+        "PHY-NEU"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "neuromuscular/muscle",
+          "code": "1",
+          "name": "Muscle",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "neuromuscular/nerve-synaptic-transmission",
+          "code": "2",
+          "name": "Nerve & Synaptic Transmission",
+          "section": "General",
+          "blocks": 3
+        }
+      ]
+    },
+    {
+      "id": "cv-phys",
+      "name": "Cardiovascular Physiology",
+      "icon": "❤️",
+      "science": "PHYSIOLOGY",
+      "study_weight_pct": 17,
+      "blocks_total": 15,
+      "blueprint_codes": [
+        "PHY-CVS"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "cv-phys/conducting-system-of-the-heart",
+          "code": "1",
+          "name": "Conducting System of the Heart",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "cv-phys/heart-as-a-pump",
+          "code": "2",
+          "name": "Heart as a Pump",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "cv-phys/dynamics-of-blood-lymph-flow",
+          "code": "3",
+          "name": "Dynamics of Blood & Lymph Flow",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "cv-phys/cvs-regulatory-mechanisms",
+          "code": "4",
+          "name": "CVS Regulatory Mechanisms",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "cv-phys/circulation-through-special-regions",
+          "code": "5",
+          "name": "Circulation Through Special Regions",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "cv-phys/cvs-conditions",
+          "code": "6",
+          "name": "CVS Conditions",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "cv-phys/learnings-from-qbank",
+          "code": "QB",
+          "name": "Learnings from QBank",
+          "section": "General",
+          "blocks": 0
+        }
+      ]
+    },
+    {
+      "id": "resp-phys",
+      "name": "Respiratory Physiology",
+      "icon": "🫁",
+      "science": "PHYSIOLOGY",
+      "study_weight_pct": 17,
+      "blocks_total": 28,
+      "blueprint_codes": [
+        "PHY-RES"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "resp-phys/lung-structure-and-function",
+          "code": "1",
+          "name": "Lung Structure and Function",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "resp-phys/ventilation",
+          "code": "2",
+          "name": "Ventilation",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "resp-phys/diffusion",
+          "code": "3",
+          "name": "Diffusion",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "resp-phys/respiratory-blood-flow-metabolism",
+          "code": "4",
+          "name": "Respiratory Blood Flow & Metabolism",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "resp-phys/gas-exchange",
+          "code": "5",
+          "name": "Gas Exchange",
+          "section": "General",
+          "blocks": 6
+        },
+        {
+          "id": "resp-phys/gas-transport-in-blood",
+          "code": "6",
+          "name": "Gas Transport in Blood",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "resp-phys/acid-base-disturbances",
+          "code": "7",
+          "name": "Acid Base Disturbances",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "resp-phys/mechanism-of-breathing",
+          "code": "8",
+          "name": "Mechanism of Breathing",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "resp-phys/control-of-ventilation",
+          "code": "9",
+          "name": "Control of Ventilation",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "resp-phys/qbank-learnings",
+          "code": "QB",
+          "name": "QBank Learnings",
+          "section": "General",
+          "blocks": 0
+        }
+      ]
+    },
+    {
+      "id": "endocrine",
+      "name": "Endocrine",
+      "icon": "😎",
+      "science": "PHYSIOLOGY",
+      "study_weight_pct": 8,
+      "blocks_total": 16.5,
+      "blueprint_codes": [
+        "PHY-END"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "endocrine/adrenal-gland",
+          "code": "1",
+          "name": "Adrenal Gland",
+          "section": "General",
+          "blocks": 2.5
+        },
+        {
+          "id": "endocrine/thyroid-gland",
+          "code": "2",
+          "name": "Thyroid Gland",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "endocrine/calcium-metabolism",
+          "code": "3",
+          "name": "Calcium Metabolism",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "endocrine/pancreas-carbohydrate-metabolism",
+          "code": "4",
+          "name": "Pancreas & Carbohydrate Metabolism",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "endocrine/ant-pituitary-gland",
+          "code": "5",
+          "name": "Ant. Pituitary Gland",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "endocrine/post-pituitary-gland",
+          "code": "6",
+          "name": "Post. Pituitary Gland",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "endocrine/repro-phys",
+          "code": "7",
+          "name": "Repro Phys",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "endocrine/qbank-learnings",
+          "code": "QB",
+          "name": "QBank Learnings",
+          "section": "General",
+          "blocks": 0
+        }
+      ]
+    },
+    {
+      "id": "git-phys",
+      "name": "GIT Physiology",
+      "icon": "🐄",
+      "science": "PHYSIOLOGY",
+      "study_weight_pct": 17,
+      "blocks_total": 19.5,
+      "blueprint_codes": [
+        "PHY-GIT"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "git-phys/git-functions",
+          "code": "1",
+          "name": "GIT Functions",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "git-phys/git-hormones-regulation",
+          "code": "2",
+          "name": "GIT Hormones (Regulation)",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "git-phys/absorption-and-digestion",
+          "code": "3",
+          "name": "Absorption and Digestion",
+          "section": "General",
+          "blocks": 6
+        },
+        {
+          "id": "git-phys/liver-and-biliary-system",
+          "code": "4",
+          "name": "Liver and Biliary System",
+          "section": "General",
+          "blocks": 4.5
+        },
+        {
+          "id": "git-phys/qbank-learnings",
+          "code": "QB",
+          "name": "QBank Learnings",
+          "section": "General",
+          "blocks": 0
+        }
+      ]
+    },
+    {
+      "id": "pharmacology",
+      "name": "Pharmacology & Therapeutics",
+      "icon": "💊",
+      "science": "PATHOLOGY",
+      "study_weight_pct": 0,
+      "blocks_total": 21,
+      "blueprint_codes": [
+        "PAT-PHA"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "pharmacology/pk-pd-principles-special-cases",
+          "code": "1",
+          "name": "PK/PD Principles & Special Cases",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "pharmacology/cardiovascular-drugs",
+          "code": "2",
+          "name": "Cardiovascular Drugs",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "pharmacology/respiratory-drugs",
+          "code": "3",
+          "name": "Respiratory Drugs",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "pharmacology/endocrine-drugs",
+          "code": "4",
+          "name": "Endocrine Drugs",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "pharmacology/gi-drugs",
+          "code": "5",
+          "name": "GI Drugs",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "pharmacology/cns-drugs-incl-opioids-palliative",
+          "code": "6",
+          "name": "CNS Drugs (incl. Opioids & Palliative)",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "pharmacology/haemopoietic-anticoagulant-drugs",
+          "code": "7",
+          "name": "Haemopoietic & Anticoagulant Drugs",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "pharmacology/oncology-immunosuppression",
+          "code": "8",
+          "name": "Oncology / Immunosuppression",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "pharmacology/anti-inflammatories-miscellaneous",
+          "code": "9",
+          "name": "Anti-inflammatories & Miscellaneous",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "pharmacology/qbank-learnings",
+          "code": "QB",
+          "name": "QBank Learnings",
+          "section": "General",
+          "blocks": 0
+        }
+      ],
+      "added": "Added per request (+pharm). Not in source roadmap. Subtopics derived from the RACS Pharmacology & Therapeutics syllabus; study_weight_pct left at 0 so you can renormalise the pathology weights yourself."
+    },
+    {
+      "id": "blood-phys",
+      "name": "Blood & Haemostasis Physiology",
+      "icon": "🩸",
+      "science": "PHYSIOLOGY",
+      "study_weight_pct": 0,
+      "blocks_total": 0,
+      "blueprint_codes": [
+        "PHY-BLD"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "blood-phys/general",
+          "code": "1",
+          "name": "General",
+          "section": "General",
+          "blocks": 0
+        }
+      ],
+      "racs_completeness_stub": true,
+      "note": "RACS physiology paper includes 5 Blood questions (haemopoiesis, haemostasis, transfusion). Absent from source roadmap — stub added so it isn't silently missed."
+    },
+    {
+      "id": "genetics-mol",
+      "name": "Genetics & Molecular Biology",
+      "icon": "🧬",
+      "science": "PATHOLOGY",
+      "study_weight_pct": 0,
+      "blocks_total": 0,
+      "blueprint_codes": [
+        "PAT-GMB"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "genetics-mol/general",
+          "code": "1",
+          "name": "General",
+          "section": "General",
+          "blocks": 0
+        }
+      ],
+      "racs_completeness_stub": true,
+      "note": "In the RACS syllabus. Absent from source roadmap — stub added."
+    },
+    {
+      "id": "haematology-transfusion",
+      "name": "Haematology & Transfusion",
+      "icon": "🩸",
+      "science": "PATHOLOGY",
+      "study_weight_pct": 0,
+      "blocks_total": 0,
+      "blueprint_codes": [
+        "PAT-HAE"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "haematology-transfusion/general",
+          "code": "1",
+          "name": "General",
+          "section": "General",
+          "blocks": 0
+        }
+      ],
+      "racs_completeness_stub": true,
+      "note": "RACS pathology paper, ~2 questions. Absent from source roadmap — stub added."
+    },
+    {
+      "id": "statistics",
+      "name": "Statistics & Clinical Decision-Making",
+      "icon": "📊",
+      "science": "PATHOLOGY",
+      "study_weight_pct": 0,
+      "blocks_total": 0,
+      "blueprint_codes": [
+        "PAT-STA"
+      ],
+      "sections": [
+        "General"
+      ],
+      "subtopics": [
+        {
+          "id": "statistics/general",
+          "code": "1",
+          "name": "General",
+          "section": "General",
+          "blocks": 0
+        }
+      ],
+      "racs_completeness_stub": true,
+      "note": "RACS pathology paper, ~4 questions. Chronically under-prepared. Absent from source roadmap — stub added."
+    }
+  ]
+}

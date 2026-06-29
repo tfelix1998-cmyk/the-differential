@@ -1,0 +1,125 @@
+{
+  "_schema": {
+    "description": "GSSE question bank for The Differential. Each question hangs off a subtopic_id from gsse_structure.json (the roadmap-style tree). One file may hold many questions, or split per topic/subtopic like the PSA banks.",
+    "join_key": "subtopic_id resolves through gsse_config.get_subtopic() to its topic, science (ANATOMY/PHYSIOLOGY/PATHOLOGY) and RACS exam blueprint code(s) — so you never store those redundantly.",
+    "fields": {
+      "id": "Unique string. Convention: GSSE-<TOPIC_ID>-<NNNN>, e.g. GSSE-abdomen-0001",
+      "subtopic_id": "REQUIRED. Leaf id from the tree, e.g. 'abdomen/anterior-abd-wall'. Drives navigation, progress and mock assembly.",
+      "type": "X | A | B | SPOT",
+      "topic_label": "Optional human label (auto-derivable from subtopic_id; handy for quick reading).",
+      "difficulty": "core | desirable | advanced",
+      "stem": "Question stem / lead-in.",
+      "statements": "Type X only: list of {text, answer(bool), explanation}. Null otherwise.",
+      "options": "Type A/B only: list of option strings. Null otherwise.",
+      "answer": "Type A/B: correct option letter/text. SPOT: canonical answer. Null for Type X.",
+      "accepted_answers": "SPOT only: acceptable answer variants. Null otherwise.",
+      "explanation": "Overall teaching explanation.",
+      "image": "SPOT (or image-stem MCQ): relative path. Null otherwise.",
+      "source": "Provenance (copyright-respecting rewrites).",
+      "needs_au_review": "Bool. Flag regimen/guideline-specific items for Australian Therapeutic Guidelines / QLD Health check.",
+      "tags": "Free-text tags."
+    }
+  },
+  "questions": [
+    {
+      "id": "GSSE-abdomen-0001",
+      "subtopic_id": "abdomen/anterior-abd-wall",
+      "type": "X",
+      "topic_label": "Abdomen \u2014 Anterior Abd Wall",
+      "difficulty": "core",
+      "stem": "Regarding the inguinal canal and inguinal hernias:",
+      "statements": [
+        {"text": "The deep inguinal ring lies lateral to the inferior epigastric vessels.", "answer": true, "explanation": "Deep ring is a transversalis fascia defect lateral to the inferior epigastric vessels."},
+        {"text": "An indirect inguinal hernia passes medial to the inferior epigastric vessels.", "answer": false, "explanation": "Indirect = lateral (via deep ring); direct = medial (Hesselbach's triangle)."},
+        {"text": "The conjoint tendon is formed by the aponeuroses of internal oblique and transversus abdominis.", "answer": true, "explanation": "These fuse to reinforce the medial posterior wall."},
+        {"text": "The anterior wall is formed mainly by the external oblique aponeurosis.", "answer": true, "explanation": "Reinforced laterally by internal oblique."},
+        {"text": "The floor of the canal is formed by the external oblique aponeurosis.", "answer": false, "explanation": "Floor = inguinal ligament with lacunar ligament medially."}
+      ],
+      "options": null, "answer": null, "accepted_answers": null,
+      "explanation": "The relation of the sac to the inferior epigastric vessels is the key direct-vs-indirect discriminator.",
+      "image": null, "source": "Surgical anatomy (rewritten).", "needs_au_review": false,
+      "tags": ["hernia", "inguinal", "anterior-abdominal-wall"]
+    },
+    {
+      "id": "GSSE-cv-phys-0001",
+      "subtopic_id": "cv-phys/heart-as-a-pump",
+      "type": "A",
+      "topic_label": "CV Physiology \u2014 Heart as a Pump",
+      "difficulty": "core",
+      "stem": "The dicrotic notch on the aortic pressure waveform corresponds to:",
+      "statements": null,
+      "options": ["A. Opening of the aortic valve", "B. Closure of the aortic valve", "C. Opening of the mitral valve", "D. Closure of the mitral valve", "E. Peak ventricular ejection"],
+      "answer": "B", "accepted_answers": null,
+      "explanation": "The incisura marks aortic valve closure at the onset of diastole.",
+      "image": null, "source": "Cardiovascular physiology (rewritten).", "needs_au_review": false,
+      "tags": ["cardiac-cycle", "pressure-waveform", "aortic-valve"]
+    },
+    {
+      "id": "GSSE-resp-phys-0001",
+      "subtopic_id": "resp-phys/gas-transport-in-blood",
+      "type": "X",
+      "topic_label": "Resp Physiology \u2014 Gas Transport in Blood",
+      "difficulty": "core",
+      "stem": "Regarding the oxyhaemoglobin dissociation curve:",
+      "statements": [
+        {"text": "A rightward shift indicates decreased haemoglobin affinity for oxygen.", "answer": true, "explanation": "Lower affinity = easier tissue offloading."},
+        {"text": "Increased 2,3-DPG shifts the curve to the left.", "answer": false, "explanation": "Raised 2,3-DPG shifts it right."},
+        {"text": "The Bohr effect describes the influence of CO2 and H+ on oxygen affinity.", "answer": true, "explanation": "Higher CO2/H+ shifts right."},
+        {"text": "Fetal haemoglobin sits to the right of adult haemoglobin.", "answer": false, "explanation": "HbF has higher affinity \u2014 sits left."},
+        {"text": "Carbon monoxide increases oxygen affinity yet reduces oxygen-carrying capacity.", "answer": true, "explanation": "Shifts left and occupies binding sites."}
+      ],
+      "options": null, "answer": null, "accepted_answers": null,
+      "explanation": "Lock down the direction of each shift rather than a single fact.",
+      "image": null, "source": "Respiratory physiology (rewritten).", "needs_au_review": false,
+      "tags": ["oxygen-transport", "haemoglobin", "bohr-effect"]
+    },
+    {
+      "id": "GSSE-neoplasia-0001",
+      "subtopic_id": "neoplasia/neoplasia",
+      "type": "X",
+      "topic_label": "Neoplasia \u2014 Neoplasia",
+      "difficulty": "core",
+      "stem": "Regarding the terminology of neoplasia and cellular adaptation:",
+      "statements": [
+        {"text": "Metaplasia is the reversible replacement of one mature differentiated cell type by another.", "answer": true, "explanation": "e.g. squamous metaplasia of bronchial epithelium."},
+        {"text": "A hamartoma is a malignant tumour of disorganised tissue.", "answer": false, "explanation": "Benign, disorganised overgrowth of mature native tissue."},
+        {"text": "Carcinoma in situ has breached the basement membrane.", "answer": false, "explanation": "By definition it has NOT; invasion defines invasive carcinoma."},
+        {"text": "Anaplasia describes a poorly or undifferentiated tumour.", "answer": true, "explanation": "Loss of differentiation \u2014 a hallmark of malignancy."},
+        {"text": "The TNM system stages by primary size/extent, nodal involvement and distant metastasis.", "answer": true, "explanation": "T, N, M across organ systems."}
+      ],
+      "options": null, "answer": null, "accepted_answers": null,
+      "explanation": "Definitional precision is heavily tested \u2014 metaplasia/dysplasia/anaplasia and in-situ vs invasive.",
+      "image": null, "source": "General and systemic pathology (rewritten).", "needs_au_review": false,
+      "tags": ["neoplasia", "definitions", "tnm"]
+    },
+    {
+      "id": "GSSE-microbiology-0001",
+      "subtopic_id": "microbiology/surgical-infections",
+      "type": "A",
+      "topic_label": "Microbiology \u2014 Surgical Infections",
+      "difficulty": "core",
+      "stem": "For elective colorectal surgery, surgical antimicrobial prophylaxis should provide cover principally against:",
+      "statements": null,
+      "options": ["A. Gram-positive cocci only", "B. Anaerobes only", "C. Gram-negative bacilli and anaerobes", "D. Atypical organisms", "E. Fungi"],
+      "answer": "C", "accepted_answers": null,
+      "explanation": "Colorectal flora are predominantly gram-negative bacilli and anaerobes. Confirm the exact regimen against current Australian Therapeutic Guidelines / local QLD Health policy.",
+      "image": null, "source": "Principles of surgical prophylaxis.", "needs_au_review": true,
+      "tags": ["antibiotics", "prophylaxis", "colorectal", "ssi"]
+    },
+    {
+      "id": "GSSE-thorax-0001",
+      "subtopic_id": "thorax/superior-mediastinum",
+      "type": "SPOT",
+      "topic_label": "Thorax \u2014 Superior Mediastinum",
+      "difficulty": "core",
+      "stem": "On this axial CT of the thorax at the level of the aortic arch, identify the structure indicated by the arrow.",
+      "statements": null, "options": null,
+      "answer": "Arch of the aorta",
+      "accepted_answers": ["aortic arch", "arch of aorta", "arch of the aorta"],
+      "explanation": "TEMPLATE SPOT \u2014 replace the image path with your own asset. Marking matches 'answer' plus 'accepted_answers' (case-insensitive, trimmed). Examiners expect a precisely named structure.",
+      "image": "images/gsse/REPLACE_ME_axial_thorax_arch.png",
+      "source": "Cross-sectional anatomy (template).", "needs_au_review": false,
+      "tags": ["spot", "cross-sectional", "ct", "mediastinum"]
+    }
+  ]
+}
