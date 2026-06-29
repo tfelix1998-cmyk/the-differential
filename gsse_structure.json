@@ -1213,8 +1213,8 @@
       "name": "Pharmacology & Therapeutics",
       "icon": "💊",
       "science": "PATHOLOGY",
-      "study_weight_pct": 0,
-      "blocks_total": 21,
+      "study_weight_pct": 6,
+      "blocks_total": 22.0,
       "blueprint_codes": [
         "PAT-PHA"
       ],
@@ -1223,65 +1223,79 @@
       ],
       "subtopics": [
         {
-          "id": "pharmacology/pk-pd-principles-special-cases",
+          "id": "pharmacology/pk-pd-principles-drug-interactions",
           "code": "1",
-          "name": "PK/PD Principles & Special Cases",
+          "name": "PK/PD Principles & Drug Interactions",
           "section": "General",
           "blocks": 3
         },
         {
-          "id": "pharmacology/cardiovascular-drugs",
+          "id": "pharmacology/cardiovascular-drugs-antihypertensives-antianginals-antiarrhythmics-antifailure-lipid-lowering-shock",
           "code": "2",
-          "name": "Cardiovascular Drugs",
+          "name": "Cardiovascular Drugs (antihypertensives, antianginals, antiarrhythmics, antifailure, lipid-lowering, shock)",
           "section": "General",
           "blocks": 3
         },
         {
-          "id": "pharmacology/respiratory-drugs",
+          "id": "pharmacology/respiratory-drugs-asthma-copd",
           "code": "3",
-          "name": "Respiratory Drugs",
+          "name": "Respiratory Drugs (asthma, COPD)",
           "section": "General",
           "blocks": 1.5
         },
         {
-          "id": "pharmacology/endocrine-drugs",
+          "id": "pharmacology/endocrine-drugs-corticosteroids-ocp-thyroid-diabetes-insulin-desmopressin",
           "code": "4",
-          "name": "Endocrine Drugs",
+          "name": "Endocrine Drugs (corticosteroids, OCP, thyroid, diabetes/insulin, desmopressin)",
           "section": "General",
           "blocks": 3
         },
         {
-          "id": "pharmacology/gi-drugs",
+          "id": "pharmacology/gastrointestinal-drugs-antiulcer-h2-antiemetics-antidiarrhoeals-laxatives",
           "code": "5",
-          "name": "GI Drugs",
+          "name": "Gastrointestinal Drugs (antiulcer/H2, antiemetics, antidiarrhoeals, laxatives)",
           "section": "General",
           "blocks": 1.5
         },
         {
-          "id": "pharmacology/cns-drugs-incl-opioids-palliative",
+          "id": "pharmacology/cns-drugs-opioids-palliative-tranquillisers-anticonvulsants-anaesthetics-muscle-relaxants-local-anaesthetics",
           "code": "6",
-          "name": "CNS Drugs (incl. Opioids & Palliative)",
+          "name": "CNS Drugs (opioids/palliative, tranquillisers, anticonvulsants, anaesthetics, muscle relaxants, local anaesthetics)",
           "section": "General",
           "blocks": 3
         },
         {
-          "id": "pharmacology/haemopoietic-anticoagulant-drugs",
+          "id": "pharmacology/haemopoietic-drugs-heparin-warfarin-streptokinase-rtpa-erythropoietin",
           "code": "7",
-          "name": "Haemopoietic & Anticoagulant Drugs",
-          "section": "General",
-          "blocks": 3
-        },
-        {
-          "id": "pharmacology/oncology-immunosuppression",
-          "code": "8",
-          "name": "Oncology / Immunosuppression",
+          "name": "Haemopoietic Drugs (heparin, warfarin, streptokinase, rtPA, erythropoietin)",
           "section": "General",
           "blocks": 1.5
         },
         {
-          "id": "pharmacology/anti-inflammatories-miscellaneous",
+          "id": "pharmacology/oncology-immunosuppression-transplantation-cytotoxics-tamoxifen",
+          "code": "8",
+          "name": "Oncology / Immunosuppression / Transplantation (cytotoxics, tamoxifen)",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "pharmacology/anti-inflammatories-miscellaneous-incl-biliary-stone-dissolution",
           "code": "9",
-          "name": "Anti-inflammatories & Miscellaneous",
+          "name": "Anti-inflammatories & Miscellaneous (incl. biliary stone dissolution)",
+          "section": "General",
+          "blocks": 1
+        },
+        {
+          "id": "pharmacology/antibiotics-interactions-clearance-in-liver-renal-failure-bioavailability",
+          "code": "10",
+          "name": "Antibiotics (interactions, clearance in liver/renal failure, bioavailability)",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "pharmacology/special-cases-neonates-paediatric-pregnancy-ageing",
+          "code": "11",
+          "name": "Special Cases (neonates, paediatric, pregnancy, ageing)",
           "section": "General",
           "blocks": 1.5
         },
@@ -1293,15 +1307,15 @@
           "blocks": 0
         }
       ],
-      "added": "Added per request (+pharm). Not in source roadmap. Subtopics derived from the RACS Pharmacology & Therapeutics syllabus; study_weight_pct left at 0 so you can renormalise the pathology weights yourself."
+      "note": "Built from the RACS Pharmacology & Therapeutics syllabus."
     },
     {
       "id": "blood-phys",
       "name": "Blood & Haemostasis Physiology",
       "icon": "🩸",
       "science": "PHYSIOLOGY",
-      "study_weight_pct": 0,
-      "blocks_total": 0,
+      "study_weight_pct": 8,
+      "blocks_total": 6.0,
       "blueprint_codes": [
         "PHY-BLD"
       ],
@@ -1310,23 +1324,50 @@
       ],
       "subtopics": [
         {
-          "id": "blood-phys/general",
+          "id": "blood-phys/haemopoiesis",
           "code": "1",
-          "name": "General",
+          "name": "Haemopoiesis",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "blood-phys/haemostasis-coagulation",
+          "code": "2",
+          "name": "Haemostasis & Coagulation",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "blood-phys/fluid-replacement-principles",
+          "code": "3",
+          "name": "Fluid Replacement Principles",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "blood-phys/transfusion-medicine",
+          "code": "4",
+          "name": "Transfusion Medicine",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "blood-phys/qbank-learnings",
+          "code": "QB",
+          "name": "QBank Learnings",
           "section": "General",
           "blocks": 0
         }
       ],
-      "racs_completeness_stub": true,
-      "note": "RACS physiology paper includes 5 Blood questions (haemopoiesis, haemostasis, transfusion). Absent from source roadmap — stub added so it isn't silently missed."
+      "note": "Built from the RACS Physiology of blood syllabus."
     },
     {
       "id": "genetics-mol",
       "name": "Genetics & Molecular Biology",
       "icon": "🧬",
       "science": "PATHOLOGY",
-      "study_weight_pct": 0,
-      "blocks_total": 0,
+      "study_weight_pct": 5,
+      "blocks_total": 6.0,
       "blueprint_codes": [
         "PAT-GMB"
       ],
@@ -1335,23 +1376,43 @@
       ],
       "subtopics": [
         {
-          "id": "genetics-mol/general",
+          "id": "genetics-mol/dna-rna-structure-cell-cycle-genetic-abnormalities",
           "code": "1",
-          "name": "General",
+          "name": "DNA & RNA Structure, Cell Cycle & Genetic Abnormalities",
+          "section": "General",
+          "blocks": 3
+        },
+        {
+          "id": "genetics-mol/mendelian-genetics",
+          "code": "2",
+          "name": "Mendelian Genetics",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "genetics-mol/cytogenetics-laboratory-techniques",
+          "code": "3",
+          "name": "Cytogenetics & Laboratory Techniques",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "genetics-mol/qbank-learnings",
+          "code": "QB",
+          "name": "QBank Learnings",
           "section": "General",
           "blocks": 0
         }
       ],
-      "racs_completeness_stub": true,
-      "note": "In the RACS syllabus. Absent from source roadmap — stub added."
+      "note": "Built from the RACS Genetics & molecular biology syllabus."
     },
     {
       "id": "haematology-transfusion",
       "name": "Haematology & Transfusion",
       "icon": "🩸",
       "science": "PATHOLOGY",
-      "study_weight_pct": 0,
-      "blocks_total": 0,
+      "study_weight_pct": 3,
+      "blocks_total": 10.5,
       "blueprint_codes": [
         "PAT-HAE"
       ],
@@ -1360,23 +1421,71 @@
       ],
       "subtopics": [
         {
-          "id": "haematology-transfusion/general",
+          "id": "haematology-transfusion/origin-differentiation-of-haematopoietic-cells",
           "code": "1",
-          "name": "General",
+          "name": "Origin & Differentiation of Haematopoietic Cells",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "haematology-transfusion/anaemias-of-acute-chronic-blood-loss",
+          "code": "2",
+          "name": "Anaemias of Acute & Chronic Blood Loss",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "haematology-transfusion/types-mechanisms-of-haemolysis",
+          "code": "3",
+          "name": "Types & Mechanisms of Haemolysis",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "haematology-transfusion/anaemias-of-substrate-deficiency",
+          "code": "4",
+          "name": "Anaemias of Substrate Deficiency",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "haematology-transfusion/bleeding-disorders",
+          "code": "5",
+          "name": "Bleeding Disorders",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "haematology-transfusion/white-cells-lymphomas",
+          "code": "6",
+          "name": "White Cells & Lymphomas",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "haematology-transfusion/transfusion-blood-components",
+          "code": "7",
+          "name": "Transfusion & Blood Components",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "haematology-transfusion/qbank-learnings",
+          "code": "QB",
+          "name": "QBank Learnings",
           "section": "General",
           "blocks": 0
         }
       ],
-      "racs_completeness_stub": true,
-      "note": "RACS pathology paper, ~2 questions. Absent from source roadmap — stub added."
+      "note": "Built from the RACS Haematology & transfusion syllabus."
     },
     {
       "id": "statistics",
       "name": "Statistics & Clinical Decision-Making",
       "icon": "📊",
       "science": "PATHOLOGY",
-      "study_weight_pct": 0,
-      "blocks_total": 0,
+      "study_weight_pct": 6,
+      "blocks_total": 6.0,
       "blueprint_codes": [
         "PAT-STA"
       ],
@@ -1385,15 +1494,42 @@
       ],
       "subtopics": [
         {
-          "id": "statistics/general",
+          "id": "statistics/statistical-analysis-parametric-non-parametric-tests",
           "code": "1",
-          "name": "General",
+          "name": "Statistical Analysis (parametric & non-parametric tests)",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "statistics/clinical-decision-making",
+          "code": "2",
+          "name": "Clinical Decision Making",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "statistics/population-statistics",
+          "code": "3",
+          "name": "Population Statistics",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "statistics/design-interpretation-of-clinical-trials",
+          "code": "4",
+          "name": "Design & Interpretation of Clinical Trials",
+          "section": "General",
+          "blocks": 1.5
+        },
+        {
+          "id": "statistics/qbank-learnings",
+          "code": "QB",
+          "name": "QBank Learnings",
           "section": "General",
           "blocks": 0
         }
       ],
-      "racs_completeness_stub": true,
-      "note": "RACS pathology paper, ~4 questions. Chronically under-prepared. Absent from source roadmap — stub added."
+      "note": "Built from the RACS Statistics syllabus."
     }
   ]
 }
