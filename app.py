@@ -14,6 +14,7 @@ from datetime import date, timedelta
 
 from prompts import VIVA_PROMPT, MCQ_PROMPT, ANKI_PROMPT, IMPORT_MCQ_PROMPT
 from psa import render_psa
+from gsse import render_gsse
 try:
     from builtin_questions import BUILTIN_BANKS
 except Exception:
@@ -210,71 +211,89 @@ if not GEMINI_API_KEY:
     st.error("**API key missing.** Run: `export GEMINI_API_KEY='your-key'` then restart.")
     st.stop()
 
-client = genai_new.Client(api_key=GEMINI_API_KEY)
+# PERF: cached so the client is built ONCE per session, not on every rerun.
+@st.cache_resource
+def get_gemini_client():
+    return genai_new.Client(api_key=GEMINI_API_KEY)
+
+client = get_gemini_client()
 MODEL = "gemini-2.5-flash"
 FALLBACK_MODEL = "gemini-2.5-flash-lite"  # tried if the primary is overloaded
 
 # ── Database ──────────────────────────────────────────────────────────────────
-conn = sqlite3.connect("study_data.db", check_same_thread=False)
-c = conn.cursor()
-c.execute("""CREATE TABLE IF NOT EXISTS mcq_attempts (
-    id INTEGER PRIMARY KEY, topic TEXT, question_text TEXT,
-    selected_answer TEXT, correct_answer TEXT, is_correct BOOLEAN,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
-c.execute("""CREATE TABLE IF NOT EXISTS viva_reviews (
-    id INTEGER PRIMARY KEY, topic TEXT, question_text TEXT,
-    confidence INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
-# Add a `user` column to separate Terry's and Alex's data (idempotent).
-for _tbl in ("mcq_attempts", "viva_reviews"):
+# PERF: cached so the connection + table setup run ONCE per session. Previously
+# this whole block (8 DDL statements + commit) re-ran on every single interaction.
+@st.cache_resource
+def get_db():
+    conn = sqlite3.connect("study_data.db", check_same_thread=False)
+    cur = conn.cursor()
+    cur.execute("""CREATE TABLE IF NOT EXISTS mcq_attempts (
+        id INTEGER PRIMARY KEY, topic TEXT, question_text TEXT,
+        selected_answer TEXT, correct_answer TEXT, is_correct BOOLEAN,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS viva_reviews (
+        id INTEGER PRIMARY KEY, topic TEXT, question_text TEXT,
+        confidence INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+    # Add a `user` column to separate Terry's and Alex's data (idempotent).
+    for _tbl in ("mcq_attempts", "viva_reviews"):
+        try:
+            cur.execute(f"ALTER TABLE {_tbl} ADD COLUMN user TEXT DEFAULT 'Terry'")
+        except Exception:
+            pass  # column already exists
+    # Permanent cache of generated content, keyed by a hash of the PDF text.
+    # Once a document is generated, it is saved here forever — re-opening it loads
+    # from storage with ZERO API calls.
+    cur.execute("""CREATE TABLE IF NOT EXISTS generated_content (
+        doc_hash TEXT PRIMARY KEY, topic TEXT,
+        viva_json TEXT, mcq_json TEXT, anki_text TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+    # Per-question feedback: a thumbs rating and a free-text note, keyed by a hash
+    # of the question text so it follows the question regardless of which bank/mode.
+    cur.execute("""CREATE TABLE IF NOT EXISTS mcq_feedback (
+        q_hash TEXT PRIMARY KEY, question_text TEXT,
+        rating TEXT, note TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     try:
-        c.execute(f"ALTER TABLE {_tbl} ADD COLUMN user TEXT DEFAULT 'Terry'")
+        cur.execute("ALTER TABLE mcq_feedback ADD COLUMN user TEXT DEFAULT 'Terry'")
     except Exception:
-        pass  # column already exists
-# Permanent cache of generated content, keyed by a hash of the PDF text.
-# Once a document is generated, it is saved here forever — re-opening it loads
-# from storage with ZERO API calls.
-c.execute("""CREATE TABLE IF NOT EXISTS generated_content (
-    doc_hash TEXT PRIMARY KEY, topic TEXT,
-    viva_json TEXT, mcq_json TEXT, anki_text TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
-# Per-question feedback: a thumbs rating and a free-text note, keyed by a hash
-# of the question text so it follows the question regardless of which bank/mode.
-c.execute("""CREATE TABLE IF NOT EXISTS mcq_feedback (
-    q_hash TEXT PRIMARY KEY, question_text TEXT,
-    rating TEXT, note TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
-try:
-    c.execute("ALTER TABLE mcq_feedback ADD COLUMN user TEXT DEFAULT 'Terry'")
-except Exception:
-    pass
-c.execute("""CREATE TABLE IF NOT EXISTS library_notes (
-    id INTEGER PRIMARY KEY, title TEXT, category TEXT, subtopic TEXT,
-    content TEXT, uploaded_by TEXT DEFAULT 'Terry',
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
-c.execute("""CREATE TABLE IF NOT EXISTS procedures (
-    id INTEGER PRIMARY KEY, name TEXT, steps_json TEXT,
-    added_by TEXT DEFAULT 'Terry',
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
-conn.commit()
+        pass
+    cur.execute("""CREATE TABLE IF NOT EXISTS library_notes (
+        id INTEGER PRIMARY KEY, title TEXT, category TEXT, subtopic TEXT,
+        content TEXT, uploaded_by TEXT DEFAULT 'Terry',
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS procedures (
+        id INTEGER PRIMARY KEY, name TEXT, steps_json TEXT,
+        added_by TEXT DEFAULT 'Terry',
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+    conn.commit()
+    return conn
+
+conn = get_db()
+c = conn.cursor()
 
 # ── Supabase (permanent cloud storage for the generated-content cache) ─────────
 # If Supabase is configured and reachable, the cache lives there permanently and
 # survives app restarts. If anything is missing or fails, we silently fall back
 # to the local SQLite cache above, so the app ALWAYS works.
-SUPABASE_ENABLED = False
-supabase = None
-try:
-    _sb_url = st.secrets.get("SUPABASE_URL", "")
-    _sb_key = st.secrets.get("SUPABASE_KEY", "")
-    if _sb_url and _sb_key:
-        from supabase import create_client
-        supabase = create_client(_sb_url, _sb_key)
-        # Probe once so a misconfiguration falls back instead of erroring later
-        supabase.table("generated_content").select("doc_hash").limit(1).execute()
-        SUPABASE_ENABLED = True
-except Exception:
-    SUPABASE_ENABLED = False
-    supabase = None
+# PERF: cached so the client is built and the probe query runs ONCE per session.
+# Previously the probe (a network round-trip to Supabase) fired on EVERY rerun —
+# this was the main cause of lag between answering questions.
+@st.cache_resource
+def get_supabase():
+    try:
+        _sb_url = st.secrets.get("SUPABASE_URL", "")
+        _sb_key = st.secrets.get("SUPABASE_KEY", "")
+        if _sb_url and _sb_key:
+            from supabase import create_client
+            sb = create_client(_sb_url, _sb_key)
+            # Probe once so a misconfiguration falls back instead of erroring later
+            sb.table("generated_content").select("doc_hash").limit(1).execute()
+            return sb, True
+    except Exception:
+        pass
+    return None, False
+
+supabase, SUPABASE_ENABLED = get_supabase()
 
 
 def doc_fingerprint(pdf_text):
@@ -1210,8 +1229,8 @@ if st.session_state.get("gen_errors"):
         st.error(f"⚠️ Generation issue → {err}")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_psa, tab_library, tab_proc, tab_help = st.tabs(
-    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "💊  PSA", "📚  Library", "🩺  Procedures", "❓  How to use"]
+tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_psa, tab_gsse, tab_library, tab_proc, tab_help = st.tabs(
+    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "💊  PSA", "🧠  GSSE", "📚  Library", "🩺  Procedures", "❓  How to use"]
 )
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1219,6 +1238,12 @@ tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_psa, tab_library, tab_proc,
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_psa:
     render_psa(c, conn, SUPABASE_ENABLED, supabase)
+
+# ═════════════════════════════════════════════════════════════════════════════
+# GSSE TAB
+# ═════════════════════════════════════════════════════════════════════════════
+with tab_gsse:
+    render_gsse()
 
 # ═════════════════════════════════════════════════════════════════════════════
 # DASHBOARD TAB
