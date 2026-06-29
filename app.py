@@ -1445,6 +1445,8 @@ with tab_viva:
                     st.session_state["viva_data"] = get_viva_for_hash(ref)
                 st.session_state["viva_revealed"] = {}
                 st.session_state["viva_confidence_logged"] = {}
+                st.session_state["viva_marks_scored"] = {}
+                st.session_state["viva_marks_max"] = {}
                 st.session_state["viva_bank_name"] = nice_name
                 st.rerun()
 
@@ -1460,13 +1462,29 @@ with tab_viva:
         viva_data = st.session_state["viva_data"]
         if "viva_revealed" not in st.session_state: st.session_state["viva_revealed"] = {}
         if "viva_confidence_logged" not in st.session_state: st.session_state["viva_confidence_logged"] = {}
+        if "viva_marks_scored" not in st.session_state: st.session_state["viva_marks_scored"] = {}
+        if "viva_marks_max" not in st.session_state: st.session_state["viva_marks_max"] = {}
 
         total_q  = len(viva_data)
         reviewed = len(st.session_state["viva_confidence_logged"])
 
-        col_p, col_cnt = st.columns([3, 1])
+        # ── Marks tally across all scored questions so far ──
+        marks_scored_dict = st.session_state["viva_marks_scored"]
+        marks_max_dict    = st.session_state["viva_marks_max"]
+        marks_scored_sum  = sum(marks_scored_dict.values())
+        marks_max_sum     = sum(marks_max_dict.values())
+
+        col_p, col_cnt, col_marks = st.columns([2.3, 1, 1])
         with col_p: st.progress(reviewed / total_q if total_q else 0)
         with col_cnt: st.caption(f"{reviewed} / {total_q} reviewed")
+        with col_marks:
+            st.markdown(
+                f'<div style="background:#16324A;border-radius:10px;padding:6px 14px;text-align:center;">'
+                f'<div style="color:#9FC4DE;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Your Marks</div>'
+                f'<div style="color:#FAFAF8;font-size:1.3rem;font-weight:700;">{marks_scored_sum:g} / {marks_max_sum:g}</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
 
         if reviewed:
             hard_v = sum(1 for v in st.session_state["viva_confidence_logged"].values() if v == 1)
@@ -1482,12 +1500,16 @@ with tab_viva:
 
         for i, qa in enumerate(viva_data):
             logged = st.session_state["viva_confidence_logged"].get(i)
+            scored_already = i in marks_scored_dict
             badge = {1:" 🔴", 2:" 🟡", 3:" 🟢"}.get(logged, "")
-            with st.expander(f"Q{i+1}: {qa['question']}{badge}"):
+            mark_badge = f" ✅ {marks_scored_dict[i]:g}/{marks_max_dict.get(i, 0):g}" if scored_already else ""
+            with st.expander(f"Q{i+1}: {qa['question']}{badge}{mark_badge}"):
                 st.text_area("Your answer:", key=f"viva_user_{i}", height=80,
-                             placeholder="Type your answer before revealing…")
-                if st.button("Reveal Model Answer", key=f"reveal_{i}"):
+                             placeholder="Type your answer before checking…")
+
+                if st.button("Check Answer", key=f"reveal_{i}"):
                     st.session_state["viva_revealed"][i] = True
+
                 if st.session_state["viva_revealed"].get(i):
                     lines = qa["answer"].split("\\n")
                     bullets = "".join(f"<li style='margin:4px 0;'>{l.strip()}</li>" for l in lines if l.strip())
@@ -1497,6 +1519,32 @@ with tab_viva:
                         f'<ul style="margin:0;padding-left:18px;">{bullets}</ul></div>',
                         unsafe_allow_html=True
                     )
+                    st.markdown("---")
+
+                    # ── Manual marks entry ──
+                    mcol1, mcol2, mcol3 = st.columns([1.3, 1.3, 1])
+                    with mcol1:
+                        max_default = marks_max_dict.get(i, 2.0)
+                        max_marks_in = st.number_input(
+                            "Out of how many marks?", min_value=0.0, step=0.5,
+                            value=float(max_default), key=f"viva_maxmarks_{i}"
+                        )
+                    with mcol2:
+                        scored_default = marks_scored_dict.get(i, 0.0)
+                        scored_in = st.number_input(
+                            "Marks you scored", min_value=0.0, step=0.5,
+                            value=float(scored_default), key=f"viva_scoredmarks_{i}"
+                        )
+                    with mcol3:
+                        st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
+                        if st.button("Record marks", key=f"record_marks_{i}"):
+                            marks_max_dict[i] = max_marks_in
+                            marks_scored_dict[i] = min(scored_in, max_marks_in) if max_marks_in else scored_in
+                            st.rerun()
+
+                    if scored_already:
+                        st.caption(f"Recorded: {marks_scored_dict[i]:g} / {marks_max_dict[i]:g} marks for this question.")
+
                     st.markdown("---")
                     if logged is None:
                         st.write("**Rate your confidence:**")
@@ -1512,6 +1560,11 @@ with tab_viva:
                     else:
                         label = {1:"🔴 Hard", 2:"🟡 Good", 3:"🟢 Easy"}[logged]
                         st.info(f"Logged: **{label}**")
+
+        if marks_scored_dict and st.button("↺ Reset all marks for this bank", key="reset_viva_marks"):
+            st.session_state["viva_marks_scored"] = {}
+            st.session_state["viva_marks_max"] = {}
+            st.rerun()
 
 # ═════════════════════════════════════════════════════════════════════════════
 # MCQ TAB
