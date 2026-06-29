@@ -3,19 +3,19 @@ gsse.py
 =======
 Streamlit page for the GSSE section of The Differential.
 
-Mount from app.py with a single line inside your tab/router, e.g.:
-
+Mount from app.py:
     import gsse
-    gsse.render_gsse()
+    gsse.render_gsse(persist_get=gsse_load_progress,
+                     persist_set=gsse_save_progress,
+                     user=st.session_state.get("current_user", "Terry"))
 
-Views (driven by st.session_state):
-    topics      -> Roadmap-style table of all topics, grouped by science
-    subtopics   -> drill-down for one topic (sections, blocks, plan, last reviewed)
-    study       -> question player for one subtopic (Type X / A / SPOT)
+Three sections (top nav):
+    📊 Dashboard  — stat cards, accuracy by subject, this-week chart, recent sessions
+    ✍️ Practice   — SBA / MCQ practice with a tab per subject
+    🗂️ Topics     — the roadmap tree (topic > section > subtopic) + question player
 
-Progress is kept in st.session_state by default. To persist to SQLite/Supabase
-(like the PSA module), pass getter/setter callables to render_gsse(); see
-_load_progress / _save_progress.
+Progress is per-user in st.session_state, optionally persisted via the hooks above.
+Built with native Streamlit components so it adapts to your app theme (light or dark).
 """
 
 import os
@@ -35,12 +35,10 @@ from gsse_config import (
     science_of_subtopic,
 )
 
-# Question bank files (merge as many as you like; same schema as gsse_seed_questions.json)
 GSSE_BANK_FILES = ["gsse_seed_questions.json"]
-
 PLAN_OPTIONS = ["Not Started", "Beginner", "Intermediate", "Confident", "Mastered"]
 SCIENCE_ORDER = ["ANATOMY", "PHYSIOLOGY", "PATHOLOGY"]
-
+TYPE_LABEL = {"A": "SBA", "X": "Type X (T/F)", "SPOT": "Spot", "B": "Matching"}
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -50,7 +48,6 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 
 @st.cache_data(show_spinner=False)
 def _load_questions():
-    """Return (questions_list, index_by_subtopic_id)."""
     questions = []
     for fname in GSSE_BANK_FILES:
         path = os.path.join(_HERE, fname)
@@ -58,8 +55,7 @@ def _load_questions():
             continue
         try:
             with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-            questions.extend(data.get("questions", []))
+                questions.extend(json.load(f).get("questions", []))
         except Exception as e:  # noqa: BLE001
             st.warning(f"Could not load {fname}: {e}")
     index = {}
@@ -68,30 +64,41 @@ def _load_questions():
     return questions, index
 
 
+def _questions_by_science(qindex):
+    out = {s: [] for s in SCIENCE_ORDER}
+    for sid, qs in qindex.items():
+        sci = science_of_subtopic(sid)
+        if sci in out:
+            out[sci].extend(qs)
+    return out
+
+
 # ---------------------------------------------------------------------------
-# Progress state (session by default; pluggable persistence)
+# Progress + event log (session state; persisted via hooks)
 # ---------------------------------------------------------------------------
 
 def _progress():
-    """Mutable per-user progress dict held in session_state.
-
-    Shape:
-        {
-          "<subtopic_id>": {
-              "plan": "Beginner",
-              "last_reviewed": "2026-06-29",
-              "attempts": {"<question_id>": {"correct": 3, "total": 5}}
-          }
-        }
-    """
     if "_gsse_progress" not in st.session_state:
         st.session_state["_gsse_progress"] = {}
     return st.session_state["_gsse_progress"]
 
 
 def _mark_dirty():
-    """Flag that progress changed, so it gets persisted at the end of this run."""
     st.session_state["_gsse_dirty"] = True
+
+
+def _events():
+    return _progress().setdefault("_events", [])
+
+
+def _log_event(science, subtopic_id, correct, total):
+    evs = _events()
+    evs.append({
+        "ts": _dt.datetime.now().isoformat(timespec="seconds"),
+        "science": science, "subtopic_id": subtopic_id,
+        "correct": int(correct), "total": int(total),
+    })
+    del evs[:-1000]  # keep the most recent 1000
 
 
 def _sub_progress(subtopic_id):
@@ -105,13 +112,13 @@ def _record_attempt(subtopic_id, question_id, correct, total):
     sp = _sub_progress(subtopic_id)
     sp["attempts"][question_id] = {"correct": correct, "total": total}
     sp["last_reviewed"] = _dt.date.today().isoformat()
+    _log_event(science_of_subtopic(subtopic_id), subtopic_id, correct, total)
     _mark_dirty()
 
 
 def _subtopic_accuracy(subtopic_id):
-    """Best-known accuracy fraction across attempted questions, or None."""
     sp = _progress().get(subtopic_id)
-    if not sp or not sp["attempts"]:
+    if not sp or not sp.get("attempts"):
         return None
     c = sum(a["correct"] for a in sp["attempts"].values())
     t = sum(a["total"] for a in sp["attempts"].values())
@@ -119,32 +126,85 @@ def _subtopic_accuracy(subtopic_id):
 
 
 def _topic_completion(topic):
-    """Blocks-weighted mean accuracy across the topic's subtopics (0..1)."""
     num = den = 0.0
-    for st_ in topic["subtopics"]:
-        acc = _subtopic_accuracy(st_["id"])
+    for s in topic["subtopics"]:
+        acc = _subtopic_accuracy(s["id"])
         if acc is None:
             continue
-        w = st_["blocks"] or 0.5  # QBank rows have 0 blocks; give them a small weight
+        w = s["blocks"] or 0.5
         num += acc * w
         den += w
     return (num / den) if den else 0.0
 
 
 def _science_readiness(science):
-    """Mean topic completion across a science (for the independent-pass bars)."""
-    ts = topics_for_science(science)
-    vals = [_topic_completion(t) for t in ts]
+    vals = [_topic_completion(t) for t in topics_for_science(science)]
     answered = [v for v in vals if v > 0]
     return (sum(answered) / len(answered)) if answered else 0.0
 
 
-# Optional persistence hooks ------------------------------------------------
-# Wire these to your SQLite/Supabase layer for cross-session progress:
-#   persist_get(user) -> dict      load this user's saved progress
-#   persist_set(progress, user)    save it
+# ---------------------------------------------------------------------------
+# Analytics (pure, NaN-safe)
+# ---------------------------------------------------------------------------
+
+def _date_of(e):
+    return _dt.date.fromisoformat(e["ts"][:10])
+
+
+def _analytics(events, today=None):
+    today = today or _dt.date.today()
+    tot = sum(e["total"] for e in events)
+    cor = sum(e["correct"] for e in events)
+    by = {}
+    for sci in SCIENCE_ORDER:
+        se = [e for e in events if e["science"] == sci]
+        t = sum(e["total"] for e in se); c = sum(e["correct"] for e in se)
+        by[sci] = (c / t) if t else 0.0
+    week = []
+    for i in range(6, -1, -1):
+        day = today - _dt.timedelta(days=i)
+        de = [e for e in events if _date_of(e) == day]
+        t = sum(e["total"] for e in de); c = sum(e["correct"] for e in de)
+        week.append({"day": day.strftime("%a"),
+                     "accuracy": round((c / t) * 100) if t else 0,
+                     "answered": len(de)})
+    days = {_date_of(e) for e in events}
+    cur = today
+    if cur not in days and (today - _dt.timedelta(days=1)) in days:
+        cur = today - _dt.timedelta(days=1)
+    streak = 0
+    while cur in days:
+        streak += 1; cur -= _dt.timedelta(days=1)
+    return {"answered": len(events), "overall": (cor / tot) if tot else 0.0,
+            "by_science": by, "week": week, "streak": streak}
+
+
+def _recent_sessions(events, limit=5):
+    groups = {}
+    for e in events:
+        g = groups.setdefault((_date_of(e), e["science"]), {"total": 0, "correct": 0, "n": 0})
+        g["total"] += e["total"]; g["correct"] += e["correct"]; g["n"] += 1
+    rows = [{"date": d, "science": sci, "n": g["n"],
+             "acc": round((g["correct"] / g["total"]) * 100) if g["total"] else 0}
+            for (d, sci), g in groups.items()]
+    rows.sort(key=lambda r: r["date"], reverse=True)
+    return rows[:limit]
+
+
+def _relative_day(d):
+    delta = (_dt.date.today() - d).days
+    if delta <= 0:
+        return "Today"
+    if delta == 1:
+        return "Yesterday"
+    return f"{delta} days ago"
+
+
+# ---------------------------------------------------------------------------
+# Persistence hooks
+# ---------------------------------------------------------------------------
+
 def _ensure_loaded(persist_get, user):
-    """Load progress once per user. Reloads if the user switches mid-session."""
     if st.session_state.get("_gsse_loaded_user") != user:
         loaded = {}
         if persist_get:
@@ -158,7 +218,6 @@ def _ensure_loaded(persist_get, user):
 
 
 def _flush(persist_set, user):
-    """Persist only if something changed this run (keeps writes off the hot path)."""
     if persist_set and st.session_state.get("_gsse_dirty"):
         try:
             persist_set(_progress(), user)
@@ -168,7 +227,7 @@ def _flush(persist_set, user):
 
 
 # ---------------------------------------------------------------------------
-# Navigation helpers
+# Navigation + marking helpers
 # ---------------------------------------------------------------------------
 
 def _go(view, topic_id=None, subtopic_id=None):
@@ -180,10 +239,6 @@ def _go(view, topic_id=None, subtopic_id=None):
     st.rerun()
 
 
-# ---------------------------------------------------------------------------
-# Marking (pure-ish logic)
-# ---------------------------------------------------------------------------
-
 def _norm(s):
     return re.sub(r"\s+", " ", str(s).strip().lower())
 
@@ -194,117 +249,23 @@ def _option_letter(opt):
 
 
 # ---------------------------------------------------------------------------
-# View: topics table
-# ---------------------------------------------------------------------------
-
-def _topics_view(qindex):
-    st.subheader("GSSE — Topics")
-    st.caption(
-        "Three components are passed independently — fail any one and you fail "
-        "the whole exam. Readiness is shown per component."
-    )
-
-    # per-component readiness
-    cols = st.columns(3)
-    for col, sci in zip(cols, SCIENCE_ORDER):
-        r = _science_readiness(sci)
-        col.metric(GSSE_DOMAINS[sci]["name"], f"{r*100:.0f}%")
-        col.progress(min(max(r, 0.0), 1.0))
-
-    st.divider()
-
-    for sci in SCIENCE_ORDER:
-        st.markdown(f"### {GSSE_DOMAINS[sci]['name']}")
-        for t in topics_for_science(sci):
-            n_q = sum(len(qindex.get(s["id"], [])) for s in t["subtopics"])
-            comp = _topic_completion(t)
-            c1, c2, c3, c4, c5 = st.columns([5, 1.4, 1.4, 2, 1.4])
-            stub = " · stub" if t.get("racs_completeness_stub") else ""
-            c1.markdown(f"{t['icon']} **{t['name']}**  \n"
-                        f"<span style='color:gray;font-size:0.85em'>"
-                        f"{len(t['subtopics'])} subtopics · {n_q} questions{stub}</span>",
-                        unsafe_allow_html=True)
-            c2.markdown(f"<span style='color:gray'>{t['study_weight_pct']}%</span>",
-                        unsafe_allow_html=True)
-            c3.markdown(f"<span style='color:gray'>{t['blocks_total']} blk</span>",
-                        unsafe_allow_html=True)
-            c4.progress(min(max(comp, 0.0), 1.0))
-            if c5.button("Open", key=f"open_{t['id']}"):
-                _go("subtopics", topic_id=t["id"])
-        st.write("")
-
-
-# ---------------------------------------------------------------------------
-# View: subtopics for a topic
-# ---------------------------------------------------------------------------
-
-def _subtopics_view(qindex):
-    topic = get_topic(st.session_state.get("_gsse_topic"))
-    if topic is None:
-        _go("topics")
-        return
-
-    top = st.columns([6, 2])
-    top[0].subheader(f"{topic['icon']} {topic['name']}")
-    if top[1].button("← Back to topics"):
-        _go("topics")
-
-    if topic.get("note"):
-        st.caption(topic["note"])
-
-    grouped = sections_of(topic["id"])
-    for section, subs in grouped.items():
-        if topic["sections"] != ["General"]:
-            st.markdown(f"**{section}**")
-        for s in subs:
-            sp = _sub_progress(s["id"])
-            n_q = len(qindex.get(s["id"], []))
-            acc = _subtopic_accuracy(s["id"])
-            c1, c2, c3, c4, c5 = st.columns([5, 1, 2, 2, 1.4])
-            c1.write(f"{s['code']}. {s['name']}")
-            c2.markdown(f"<span style='color:gray'>{s['blocks']} blk</span>",
-                        unsafe_allow_html=True)
-            # plan status selector (persists in session)
-            new_plan = c3.selectbox(
-                "plan", PLAN_OPTIONS, index=PLAN_OPTIONS.index(sp["plan"]),
-                key=f"plan_{s['id']}", label_visibility="collapsed",
-            )
-            if new_plan != sp["plan"]:
-                sp["plan"] = new_plan
-                _mark_dirty()
-            label = (f"{acc*100:.0f}% · {n_q} q" if acc is not None
-                     else (f"{n_q} q" if n_q else "no q yet"))
-            c4.markdown(f"<span style='color:gray'>{label}</span>",
-                        unsafe_allow_html=True)
-            if n_q:
-                if c5.button("Study", key=f"study_{s['id']}"):
-                    _go("study", subtopic_id=s["id"])
-            else:
-                c5.markdown("<span style='color:gray;font-size:0.85em'>—</span>",
-                            unsafe_allow_html=True)
-        st.write("")
-
-
-# ---------------------------------------------------------------------------
-# View: study / question player
+# Question renderers (return (correct, total) on Check, else None)
 # ---------------------------------------------------------------------------
 
 def _render_typeX(q, key):
     st.write(q["stem"])
-    answers = []
+    picks = []
     for i, stmt in enumerate(q["statements"]):
-        choice = st.radio(stmt["text"], ["True", "False"], key=f"{key}_s{i}",
-                          horizontal=True, index=None)
-        answers.append(choice)
-    if st.button("Check", key=f"{key}_check"):
+        picks.append(st.radio(stmt["text"], ["True", "False"], key=f"{key}_s{i}",
+                              horizontal=True, index=None))
+    if st.button("Check answer", key=f"{key}_check"):
         correct = 0
         for i, stmt in enumerate(q["statements"]):
-            picked = answers[i]
             truth = "True" if stmt["answer"] else "False"
-            ok = (picked == truth)
+            ok = picks[i] == truth
             correct += int(ok)
-            icon = "✅" if ok else ("⬜" if picked is None else "❌")
-            st.markdown(f"{icon} **{stmt['text']}** — *{truth}*")
+            st.markdown(f"{'✅' if ok else ('⬜' if picks[i] is None else '❌')} "
+                        f"**{stmt['text']}** — *{truth}*")
             if stmt.get("explanation"):
                 st.caption(stmt["explanation"])
         st.info(f"Score: {correct}/{len(q['statements'])}")
@@ -316,13 +277,11 @@ def _render_typeX(q, key):
 
 def _render_typeA(q, key):
     st.write(q["stem"])
-    options = q.get("options") or []
-    picked = st.radio("Select one:", options, key=f"{key}_opt", index=None)
-    if st.button("Check", key=f"{key}_check"):
-        picked_letter = _option_letter(picked) if picked else None
-        ok = (picked_letter == str(q.get("answer")).strip().upper())
-        st.markdown(("✅ Correct" if ok else "❌ Incorrect")
-                    + f" — answer: **{q.get('answer')}**")
+    picked = st.radio("Select one:", q.get("options") or [], key=f"{key}_opt",
+                      index=None, label_visibility="collapsed")
+    if st.button("Check answer", key=f"{key}_check"):
+        ok = (_option_letter(picked) if picked else None) == str(q.get("answer")).strip().upper()
+        st.markdown(("✅ Correct" if ok else "❌ Incorrect") + f" — answer: **{q.get('answer')}**")
         if q.get("explanation"):
             st.caption(q["explanation"])
         return int(ok), 1
@@ -336,15 +295,13 @@ def _render_spot(q, key):
         if os.path.exists(path):
             st.image(path, use_container_width=True)
         else:
-            st.warning(f"Image not found: {img} (drop the file into the repo and "
-                       f"set the correct relative path).")
+            st.warning(f"Image not found: {img}")
     st.write(q["stem"])
     typed = st.text_input("Your answer:", key=f"{key}_spot")
-    if st.button("Check", key=f"{key}_check"):
-        accepted = [q.get("answer")] + (q.get("accepted_answers") or [])
-        ok = _norm(typed) in {_norm(a) for a in accepted if a}
-        st.markdown(("✅ Correct" if ok else "❌ Incorrect")
-                    + f" — answer: **{q.get('answer')}**")
+    if st.button("Check answer", key=f"{key}_check"):
+        accepted = {_norm(a) for a in ([q.get("answer")] + (q.get("accepted_answers") or [])) if a}
+        ok = _norm(typed) in accepted
+        st.markdown(("✅ Correct" if ok else "❌ Incorrect") + f" — answer: **{q.get('answer')}**")
         if q.get("explanation"):
             st.caption(q["explanation"])
         return int(ok), 1
@@ -354,36 +311,191 @@ def _render_spot(q, key):
 _RENDERERS = {"X": _render_typeX, "A": _render_typeA, "SPOT": _render_spot, "B": _render_typeA}
 
 
+def _question_card(q, key_prefix, number):
+    """Render one question as a card; record the attempt if checked."""
+    with st.container(border=True):
+        chip = TYPE_LABEL.get(q.get("type"), q.get("type"))
+        flag = "  ·  ⚑ verify vs AU guidelines" if q.get("needs_au_review") else ""
+        st.markdown(f"**Q{number}**  ·  `{chip}`{flag}")
+        renderer = _RENDERERS.get(q.get("type"), _render_typeA)
+        result = renderer(q, key=f"{key_prefix}_{q.get('id', number)}")
+        if result is not None:
+            c, t = result
+            _record_attempt(q.get("subtopic_id"), q.get("id", f"{key_prefix}-{number}"), c, t)
+
+
+# ---------------------------------------------------------------------------
+# View: Dashboard
+# ---------------------------------------------------------------------------
+
+def _dashboard_view(qindex, user):
+    import pandas as pd
+    import altair as alt
+
+    a = _analytics(_events())
+    total_q = sum(len(v) for v in qindex.values())
+
+    st.markdown(f"### Welcome back, {user} 🥷")
+    st.caption(f"{_dt.date.today():%A, %B %-d} · GSSE Preparation")
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1.container(border=True):
+        st.metric("Overall accuracy", f"{round(a['overall']*100)}%")
+    with c2.container(border=True):
+        st.metric("Questions answered", f"{a['answered']}")
+    with c3.container(border=True):
+        st.metric("Day streak", f"{a['streak']}")
+    with c4.container(border=True):
+        st.metric("Question bank", f"{total_q}")
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**Accuracy by subject**")
+        df = pd.DataFrame({"Subject": [GSSE_DOMAINS[s]["name"] for s in SCIENCE_ORDER],
+                           "Accuracy": [round(a["by_science"][s]*100) for s in SCIENCE_ORDER]})
+        chart = (alt.Chart(df).mark_bar(color="#5b6ef5", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+                 .encode(x=alt.X("Subject:N", sort=None, title=None),
+                         y=alt.Y("Accuracy:Q", title=None, scale=alt.Scale(domain=[0, 100])))
+                 .properties(height=240))
+        st.altair_chart(chart, use_container_width=True, theme="streamlit")
+    with right:
+        st.markdown("**Progress this week**")
+        dfw = pd.DataFrame(a["week"])
+        chart = (alt.Chart(dfw).mark_bar(color="#34c38f", cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+                 .encode(x=alt.X("day:N", sort=None, title=None),
+                         y=alt.Y("accuracy:Q", title=None, scale=alt.Scale(domain=[0, 100])))
+                 .properties(height=240))
+        st.altair_chart(chart, use_container_width=True, theme="streamlit")
+
+    st.markdown("**Recent sessions**")
+    sessions = _recent_sessions(_events())
+    if not sessions:
+        st.caption("No sessions yet — answer some questions in Practice or Topics to see them here.")
+    else:
+        for s in sessions:
+            with st.container(border=True):
+                cols = st.columns([6, 1.5])
+                cols[0].markdown(f"**{GSSE_DOMAINS[s['science']]['name']} practice**  \n"
+                                 f"<span style='color:gray;font-size:0.85em'>"
+                                 f"{s['n']} questions · {_relative_day(s['date'])}</span>",
+                                 unsafe_allow_html=True)
+                cols[1].markdown(f"### {s['acc']}%")
+
+
+# ---------------------------------------------------------------------------
+# View: Practice (SBA / MCQ by subject)
+# ---------------------------------------------------------------------------
+
+def _practice_view(qindex):
+    st.markdown("### GSSE Question Bank")
+    st.caption("Practice questions by subject — single-best-answer, true/false and spots.")
+
+    by_sci = _questions_by_science(qindex)
+    tabs = st.tabs([f"{GSSE_DOMAINS[s]['name']} ({len(by_sci[s])})" for s in SCIENCE_ORDER])
+    for tab, sci in zip(tabs, SCIENCE_ORDER):
+        with tab:
+            qs = by_sci[sci]
+            if not qs:
+                st.info("No questions here yet.")
+                continue
+            answered = sum(
+                1 for q in qs
+                if q.get("id") in _progress().get(q.get("subtopic_id"), {}).get("attempts", {})
+            )
+            st.progress(answered / len(qs), text=f"{answered}/{len(qs)} answered")
+            for n, q in enumerate(qs, 1):
+                _question_card(q, key_prefix=f"prac_{sci}", number=n)
+
+
+# ---------------------------------------------------------------------------
+# View: Topics tree
+# ---------------------------------------------------------------------------
+
+def _topics_view(qindex):
+    st.markdown("### Topics")
+    st.caption("Three components are passed independently — readiness is shown per component.")
+
+    cols = st.columns(3)
+    for col, sci in zip(cols, SCIENCE_ORDER):
+        r = _science_readiness(sci)
+        with col.container(border=True):
+            st.metric(GSSE_DOMAINS[sci]["name"], f"{round(r*100)}%")
+            st.progress(min(max(r, 0.0), 1.0))
+
+    st.write("")
+    for sci in SCIENCE_ORDER:
+        st.markdown(f"#### {GSSE_DOMAINS[sci]['name']}")
+        for t in topics_for_science(sci):
+            n_q = sum(len(qindex.get(s["id"], [])) for s in t["subtopics"])
+            comp = _topic_completion(t)
+            c1, c2, c3 = st.columns([6, 2, 1.4])
+            stub = " · stub" if t.get("racs_completeness_stub") else ""
+            c1.markdown(f"{t['icon']} **{t['name']}**  \n"
+                        f"<span style='color:gray;font-size:0.85em'>"
+                        f"{len(t['subtopics'])} subtopics · {n_q} questions{stub}</span>",
+                        unsafe_allow_html=True)
+            c2.progress(min(max(comp, 0.0), 1.0))
+            if c3.button("Open", key=f"open_{t['id']}"):
+                _go("subtopics", topic_id=t["id"])
+        st.write("")
+
+
+def _subtopics_view(qindex):
+    topic = get_topic(st.session_state.get("_gsse_topic"))
+    if topic is None:
+        _go("topics"); return
+
+    top = st.columns([6, 2])
+    top[0].markdown(f"### {topic['icon']} {topic['name']}")
+    if top[1].button("← Back to topics"):
+        _go("topics")
+    if topic.get("note"):
+        st.caption(topic["note"])
+
+    for section, subs in sections_of(topic["id"]).items():
+        if topic["sections"] != ["General"]:
+            st.markdown(f"**{section}**")
+        for s in subs:
+            sp = _sub_progress(s["id"])
+            n_q = len(qindex.get(s["id"], []))
+            acc = _subtopic_accuracy(s["id"])
+            c1, c2, c3, c4 = st.columns([5, 2, 2, 1.4])
+            c1.write(f"{s['code']}. {s['name']}")
+            new_plan = c2.selectbox("plan", PLAN_OPTIONS, index=PLAN_OPTIONS.index(sp["plan"]),
+                                    key=f"plan_{s['id']}", label_visibility="collapsed")
+            if new_plan != sp["plan"]:
+                sp["plan"] = new_plan
+                _mark_dirty()
+            label = (f"{round(acc*100)}% · {n_q} q" if acc is not None
+                     else (f"{n_q} q" if n_q else "no q yet"))
+            c3.markdown(f"<span style='color:gray'>{label}</span>", unsafe_allow_html=True)
+            if n_q:
+                if c4.button("Study", key=f"study_{s['id']}"):
+                    _go("study", subtopic_id=s["id"])
+            else:
+                c4.markdown("<span style='color:gray;font-size:0.85em'>—</span>",
+                            unsafe_allow_html=True)
+        st.write("")
+
+
 def _study_view(qindex):
     sid = st.session_state.get("_gsse_subtopic")
     topic, sub = get_subtopic(sid)
     if sub is None:
-        _go("topics")
-        return
+        _go("topics"); return
 
     top = st.columns([6, 2])
-    top[0].subheader(f"{topic['icon']} {topic['name']} — {sub['name']}")
+    top[0].markdown(f"### {topic['icon']} {topic['name']} — {sub['name']}")
     if top[1].button("← Back"):
         _go("subtopics", topic_id=topic["id"])
 
-    questions = qindex.get(sid, [])
-    if not questions:
+    qs = qindex.get(sid, [])
+    if not qs:
         st.info("No questions in this subtopic yet.")
         return
-
-    st.caption(f"{len(questions)} question(s) · "
-               f"{GSSE_DOMAINS[science_of_subtopic(sid)]['name']} component")
-
-    for n, q in enumerate(questions, 1):
-        with st.container(border=True):
-            st.markdown(f"**Q{n}** · `{q.get('type')}`"
-                        + ("  ·  ⚑ verify against AU guidelines"
-                           if q.get("needs_au_review") else ""))
-            renderer = _RENDERERS.get(q.get("type"), _render_typeA)
-            result = renderer(q, key=f"q_{q.get('id', n)}")
-            if result is not None:
-                correct, total = result
-                _record_attempt(sid, q.get("id", f"{sid}-{n}"), correct, total)
+    st.caption(f"{len(qs)} question(s) · {GSSE_DOMAINS[science_of_subtopic(sid)]['name']} component")
+    for n, q in enumerate(qs, 1):
+        _question_card(q, key_prefix="study", number=n)
 
 
 # ---------------------------------------------------------------------------
@@ -391,22 +503,25 @@ def _study_view(qindex):
 # ---------------------------------------------------------------------------
 
 def render_gsse(persist_get=None, persist_set=None, user=None):
-    """Render the GSSE section.
-
-    persist_get(user) -> dict     load saved progress (once per user per session)
-    persist_set(progress, user)   save progress (only when it changed this run)
-    user                          current user id (e.g. "Terry" / "Alex")
-    """
+    user = user or "you"
     _ensure_loaded(persist_get, user)
     _, qindex = _load_questions()
 
-    view = st.session_state.get("_gsse_view", "topics")
-    if view == "subtopics":
-        _subtopics_view(qindex)
-    elif view == "study":
-        _study_view(qindex)
+    nav = st.radio("section", ["📊 Dashboard", "✍️ Practice", "🗂️ Topics"],
+                   horizontal=True, label_visibility="collapsed", key="_gsse_nav")
+
+    if nav.endswith("Dashboard"):
+        _dashboard_view(qindex, user)
+    elif nav.endswith("Practice"):
+        _practice_view(qindex)
     else:
-        _topics_view(qindex)
+        view = st.session_state.get("_gsse_view", "topics")
+        if view == "subtopics":
+            _subtopics_view(qindex)
+        elif view == "study":
+            _study_view(qindex)
+        else:
+            _topics_view(qindex)
 
     _flush(persist_set, user)
 
