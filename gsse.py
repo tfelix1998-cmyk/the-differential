@@ -252,43 +252,219 @@ def _option_letter(opt):
 # Question renderers (return (correct, total) on Check, else None)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Question renderers (return (correct, total) on Check, else None)
+# ---------------------------------------------------------------------------
+
+# Shared CSS injected once per session
+def _inject_q_styles():
+    if st.session_state.get("_gsse_styles_injected"):
+        return
+    st.markdown("""
+<style>
+/* ---- type label above question ---- */
+.q-type-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9ca3af;
+    margin-bottom: 4px;
+}
+/* ---- question stem ---- */
+.q-stem {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 18px;
+    line-height: 1.45;
+}
+/* ---- SR section labels ---- */
+.q-sr-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #3b82f6;
+    margin-top: 10px;
+    margin-bottom: 2px;
+}
+.q-sr-text {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+/* ---- T/F grid ---- */
+.tf-header {
+    display: grid;
+    grid-template-columns: 52px 52px 1fr;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #6b7280;
+    margin-bottom: 4px;
+    padding-left: 2px;
+}
+.tf-row {
+    display: grid;
+    grid-template-columns: 52px 52px 1fr;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #f3f4f6;
+}
+.tf-stmt {
+    font-size: 0.9rem;
+    color: #1f2937;
+    line-height: 1.4;
+}
+/* ---- result badges ---- */
+.q-result-ok  { color: #059669; font-weight: 600; }
+.q-result-bad { color: #dc2626; font-weight: 600; }
+.q-expl { font-size: 0.85rem; color: #6b7280; margin-top: 4px; }
+</style>
+""", unsafe_allow_html=True)
+    st.session_state["_gsse_styles_injected"] = True
+
+
 def _render_typeX(q, key):
-    st.write(q["stem"])
-    picks = []
-    for i, stmt in enumerate(q["statements"]):
-        picks.append(st.radio(stmt["text"], ["True", "False"], key=f"{key}_s{i}",
-                              horizontal=True, index=None))
-    if st.button("Check answer", key=f"{key}_check"):
-        correct = 0
-        for i, stmt in enumerate(q["statements"]):
-            truth = "True" if stmt["answer"] else "False"
-            ok = picks[i] == truth
-            correct += int(ok)
-            st.markdown(f"{'✅' if ok else ('⬜' if picks[i] is None else '❌')} "
-                        f"**{stmt['text']}** — *{truth}*")
-            if stmt.get("explanation"):
-                st.caption(stmt["explanation"])
-        st.info(f"Score: {correct}/{len(q['statements'])}")
-        if q.get("explanation"):
-            st.caption(q["explanation"])
-        return correct, len(q["statements"])
-    return None
+    _inject_q_styles()
+    is_sr = "statement-reason" in (q.get("tags") or [])
+
+    if is_sr:
+        # --- Statement & Reason layout ---
+        st.markdown('<div class="q-type-label">Statement &amp; Reason</div>', unsafe_allow_html=True)
+        stmts = q.get("statements") or []
+        # First statement = S, second = R
+        s_text = stmts[0]["text"] if len(stmts) > 0 else ""
+        r_text = stmts[1]["text"] if len(stmts) > 1 else ""
+        st.markdown('<div class="q-sr-label">Statement (S):</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="q-sr-text">S: {s_text}</div>', unsafe_allow_html=True)
+        st.markdown('<div class="q-sr-label">Reason (R):</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="q-sr-text">R: {r_text}</div>', unsafe_allow_html=True)
+
+        sr_options = [
+            "S is true, R is true and is a valid explanation of S",
+            "S is true, R is true but is NOT a valid explanation of S",
+            "S is true, R is false",
+            "S is false, R is true",
+            "Both S and R are false",
+        ]
+        picked_sr = st.radio("", sr_options, key=f"{key}_sr", index=None,
+                             label_visibility="collapsed")
+
+        if st.button("Check answer", key=f"{key}_check"):
+            # Work out correct SR option from statement answers
+            s_true = stmts[0]["answer"] if len(stmts) > 0 else False
+            r_true = stmts[1]["answer"] if len(stmts) > 1 else False
+            # Overall explanation field encodes the verdict for SR questions
+            expl = q.get("explanation", "")
+            if "S_TRUE_R_TRUE_EXPLAINS" in expl or "correctly explains" in expl:
+                correct_idx = 0
+            elif "S_TRUE_R_TRUE_NOT_EXPLAINS" in expl or "does not correctly explain" in expl:
+                correct_idx = 1
+            elif s_true and not r_true:
+                correct_idx = 2
+            elif not s_true and r_true:
+                correct_idx = 3
+            else:
+                correct_idx = 4
+            correct_opt = sr_options[correct_idx]
+            ok = picked_sr == correct_opt
+            st.markdown(
+                f"<span class='{'q-result-ok' if ok else 'q-result-bad'}'>"
+                f"{'✅ Correct' if ok else '❌ Incorrect'}</span> — "
+                f"<em>{correct_opt}</em>",
+                unsafe_allow_html=True)
+            if q.get("explanation"):
+                st.markdown(f'<div class="q-expl">{q["explanation"]}</div>',
+                            unsafe_allow_html=True)
+            return int(ok), 1
+        return None
+
+    else:
+        # --- True / False multi-statement layout ---
+        st.markdown('<div class="q-type-label">True / False</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="q-stem">{q["stem"]}</div>', unsafe_allow_html=True)
+
+        stmts = q.get("statements") or []
+        picks = []
+        st.markdown(
+            '<div class="tf-header"><div>True</div><div>False</div><div></div></div>',
+            unsafe_allow_html=True)
+        for i, stmt in enumerate(stmts):
+            col_t, col_f, col_text = st.columns([1, 1, 8])
+            t_sel = col_t.checkbox("T", key=f"{key}_s{i}_T", label_visibility="collapsed")
+            f_sel = col_f.checkbox("F", key=f"{key}_s{i}_F", label_visibility="collapsed")
+            col_text.markdown(
+                f'<div class="tf-stmt">{stmt["text"]}</div>', unsafe_allow_html=True)
+            # Enforce mutual exclusivity via pick logic
+            if t_sel and f_sel:
+                pick = None  # conflicting
+            elif t_sel:
+                pick = "True"
+            elif f_sel:
+                pick = "False"
+            else:
+                pick = None
+            picks.append(pick)
+
+        if st.button("Check answer", key=f"{key}_check"):
+            correct = 0
+            for i, stmt in enumerate(stmts):
+                truth = "True" if stmt["answer"] else "False"
+                ok = picks[i] == truth
+                correct += int(ok)
+                icon = "✅" if ok else ("⬜" if picks[i] is None else "❌")
+                st.markdown(
+                    f"{icon} <strong>{stmt['text']}</strong> — "
+                    f"<em>{truth}</em>",
+                    unsafe_allow_html=True)
+                if stmt.get("explanation"):
+                    st.markdown(f'<div class="q-expl">{stmt["explanation"]}</div>',
+                                unsafe_allow_html=True)
+            st.info(f"Score: {correct}/{len(stmts)}")
+            if q.get("explanation") and q["explanation"] != "See individual statement explanations above.":
+                st.markdown(f'<div class="q-expl">{q["explanation"]}</div>',
+                            unsafe_allow_html=True)
+            return correct, len(stmts)
+        return None
 
 
 def _render_typeA(q, key):
-    st.write(q["stem"])
-    picked = st.radio("Select one:", q.get("options") or [], key=f"{key}_opt",
-                      index=None, label_visibility="collapsed")
+    _inject_q_styles()
+    is_sr = "statement-reason" in (q.get("tags") or [])
+    type_label = "Statement &amp; Reason" if is_sr else "Single Best Answer"
+
+    st.markdown(f'<div class="q-type-label">{type_label}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="q-stem">{q["stem"]}</div>', unsafe_allow_html=True)
+
+    # Strip "A. " prefixes from options for display, keep full for matching
+    opts = q.get("options") or []
+    display_opts = [re.sub(r"^[A-Za-z][\.\)]\s*", "", o) for o in opts]
+
+    picked = st.radio("", opts, key=f"{key}_opt", index=None,
+                      label_visibility="collapsed",
+                      format_func=lambda o: re.sub(r"^[A-Za-z][\.\)]\s*", "", o))
+
     if st.button("Check answer", key=f"{key}_check"):
         ok = (_option_letter(picked) if picked else None) == str(q.get("answer")).strip().upper()
-        st.markdown(("✅ Correct" if ok else "❌ Incorrect") + f" — answer: **{q.get('answer')}**")
+        ans_text = next((re.sub(r"^[A-Za-z][\.\)]\s*", "", o) for o in opts
+                         if _option_letter(o) == str(q.get("answer")).strip().upper()), q.get("answer"))
+        st.markdown(
+            f"<span class='{'q-result-ok' if ok else 'q-result-bad'}'>"
+            f"{'✅ Correct' if ok else '❌ Incorrect'}</span> — <em>{ans_text}</em>",
+            unsafe_allow_html=True)
         if q.get("explanation"):
-            st.caption(q["explanation"])
+            st.markdown(f'<div class="q-expl">{q["explanation"]}</div>',
+                        unsafe_allow_html=True)
         return int(ok), 1
     return None
 
 
 def _render_spot(q, key):
+    _inject_q_styles()
+    st.markdown('<div class="q-type-label">Spot Diagnosis</div>', unsafe_allow_html=True)
     img = q.get("image")
     if img:
         path = os.path.join(_HERE, img)
@@ -296,14 +472,18 @@ def _render_spot(q, key):
             st.image(path, use_container_width=True)
         else:
             st.warning(f"Image not found: {img}")
-    st.write(q["stem"])
+    st.markdown(f'<div class="q-stem">{q["stem"]}</div>', unsafe_allow_html=True)
     typed = st.text_input("Your answer:", key=f"{key}_spot")
     if st.button("Check answer", key=f"{key}_check"):
         accepted = {_norm(a) for a in ([q.get("answer")] + (q.get("accepted_answers") or [])) if a}
         ok = _norm(typed) in accepted
-        st.markdown(("✅ Correct" if ok else "❌ Incorrect") + f" — answer: **{q.get('answer')}**")
+        st.markdown(
+            f"<span class='{'q-result-ok' if ok else 'q-result-bad'}'>"
+            f"{'✅ Correct' if ok else '❌ Incorrect'}</span> — answer: <em>{q.get('answer')}</em>",
+            unsafe_allow_html=True)
         if q.get("explanation"):
-            st.caption(q["explanation"])
+            st.markdown(f'<div class="q-expl">{q["explanation"]}</div>',
+                        unsafe_allow_html=True)
         return int(ok), 1
     return None
 
@@ -312,16 +492,15 @@ _RENDERERS = {"X": _render_typeX, "A": _render_typeA, "SPOT": _render_spot, "B":
 
 
 def _question_card(q, key_prefix, number):
-    """Render one question as a card; record the attempt if checked."""
-    with st.container(border=True):
-        chip = TYPE_LABEL.get(q.get("type"), q.get("type"))
-        flag = "  ·  ⚑ verify vs AU guidelines" if q.get("needs_au_review") else ""
-        st.markdown(f"**Q{number}**  ·  `{chip}`{flag}")
-        renderer = _RENDERERS.get(q.get("type"), _render_typeA)
-        result = renderer(q, key=f"{key_prefix}_{q.get('id', number)}")
-        if result is not None:
-            c, t = result
-            _record_attempt(q.get("subtopic_id"), q.get("id", f"{key_prefix}-{number}"), c, t)
+    """Render one question; record the attempt if checked."""
+    flag = "  ·  ⚑ *verify vs AU guidelines*" if q.get("needs_au_review") else ""
+    st.markdown(f"**Q{number}**{flag}")
+    renderer = _RENDERERS.get(q.get("type"), _render_typeA)
+    result = renderer(q, key=f"{key_prefix}_{q.get('id', number)}")
+    if result is not None:
+        c, t = result
+        _record_attempt(q.get("subtopic_id"), q.get("id", f"{key_prefix}-{number}"), c, t)
+    st.divider()
 
 
 # ---------------------------------------------------------------------------
