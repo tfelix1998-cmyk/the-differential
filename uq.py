@@ -99,8 +99,10 @@ def _log_event(topic_id, kind, correct, total):
 def _topic_progress(topic_id):
     p = _progress()
     if topic_id not in p:
-        p[topic_id] = {"mcq_attempts": {}, "viva_ratings": {}, "last_reviewed": None}
-    return p[topic_id]
+        p[topic_id] = {"mcq_attempts": {}, "viva_ratings": {}, "viva_marks": {}, "last_reviewed": None}
+    tp = p[topic_id]
+    tp.setdefault("viva_marks", {})  # backfill for progress saved before this field existed
+    return tp
 
 
 def _record_mcq(topic_id, q_key, correct):
@@ -117,6 +119,18 @@ def _record_viva(topic_id, q_key, confidence):
     tp["last_reviewed"] = _dt.date.today().isoformat()
     _log_event(topic_id, "viva", 1 if confidence >= 2 else 0, 1)
     _mark_dirty()
+
+
+def _record_viva_marks(topic_id, q_key, scored, max_marks):
+    tp = _topic_progress(topic_id)
+    tp["viva_marks"][q_key] = {"scored": scored, "max": max_marks}
+    tp["last_reviewed"] = _dt.date.today().isoformat()
+    _mark_dirty()
+
+
+def _topic_viva_marks(topic_id):
+    tp = _progress().get(topic_id)
+    return tp.get("viva_marks", {}) if tp else {}
 
 
 def _topic_mcq_accuracy(topic_id):
@@ -308,37 +322,68 @@ def _mcq_card(topic_id, mcq, number, key):
 
 @st.fragment
 def _viva_card(topic_id, qa, number, key):
+    """PERF: own fragment, same as _mcq_card. UX: matches the main Viva tab —
+    collapsible expander (so a 70+ question list stays scannable), a text
+    area to write your own answer before checking, manual marks entry, and
+    a confidence rating, with both reflected in the expander's title badge."""
     _inject_q_styles()
-    st.markdown(f"**Q{number}**")
-    st.markdown('<div class="uq-type-label">Viva</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="uq-stem">{qa["question"]}</div>', unsafe_allow_html=True)
+    rating = _topic_viva_progress(topic_id).get(key)
+    marks_rec = _topic_viva_marks(topic_id).get(key)
+    badge = {1: " 🔴", 2: " 🟡", 3: " 🟢"}.get(rating, "")
+    mark_badge = f" ✅ {marks_rec['scored']:g}/{marks_rec['max']:g}" if marks_rec else ""
 
-    revealed_key = f"{key}_revealed"
-    if st.button("Reveal answer", key=f"{key}_reveal"):
-        st.session_state[revealed_key] = True
+    with st.expander(f"Q{number}: {qa['question']}{badge}{mark_badge}"):
+        st.text_area("Your answer:", key=f"{key}_user", height=80,
+                     placeholder="Type your answer before checking…",
+                     label_visibility="collapsed")
 
-    if st.session_state.get(revealed_key):
-        lines = qa["answer"].split("\n")
-        bullets = "".join(f"<li>{l.strip()}</li>" for l in lines if l.strip())
-        st.markdown(f'<div class="uq-viva-card"><ul>{bullets}</ul></div>', unsafe_allow_html=True)
+        revealed_key = f"{key}_revealed"
+        if st.button("Reveal answer", key=f"{key}_reveal"):
+            st.session_state[revealed_key] = True
 
-        existing = _topic_viva_progress(topic_id).get(key)
-        if existing is None:
-            st.write("**Rate your confidence:**")
-            c1, c2, c3 = st.columns(3)
-            if c1.button("🔴 Hard", key=f"{key}_hard"):
-                _record_viva(topic_id, key, 1)
-                st.rerun(scope="fragment")
-            if c2.button("🟡 Good", key=f"{key}_good"):
-                _record_viva(topic_id, key, 2)
-                st.rerun(scope="fragment")
-            if c3.button("🟢 Easy", key=f"{key}_easy"):
-                _record_viva(topic_id, key, 3)
-                st.rerun(scope="fragment")
-        else:
-            label = {1: "🔴 Hard", 2: "🟡 Good", 3: "🟢 Easy"}[existing]
-            st.info(f"Logged: **{label}**")
-    st.divider()
+        if st.session_state.get(revealed_key):
+            lines = qa["answer"].split("\n")
+            bullets = "".join(f"<li>{l.strip()}</li>" for l in lines if l.strip())
+            st.markdown(f'<div class="uq-viva-card"><ul>{bullets}</ul></div>', unsafe_allow_html=True)
+            st.markdown("---")
+
+            # ── Manual marks entry (same pattern as the main Viva tab) ──
+            mcol1, mcol2, mcol3 = st.columns([1.3, 1.3, 1])
+            with mcol1:
+                max_default = marks_rec["max"] if marks_rec else 2.0
+                max_marks_in = st.number_input(
+                    "Out of how many marks?", min_value=0.0, step=0.5,
+                    value=float(max_default), key=f"{key}_maxmarks")
+            with mcol2:
+                scored_default = marks_rec["scored"] if marks_rec else 0.0
+                scored_in = st.number_input(
+                    "Marks you scored", min_value=0.0, step=0.5,
+                    value=float(scored_default), key=f"{key}_scoredmarks")
+            with mcol3:
+                st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
+                if st.button("Record marks", key=f"{key}_recordmarks"):
+                    scored_clamped = min(scored_in, max_marks_in) if max_marks_in else scored_in
+                    _record_viva_marks(topic_id, key, scored_clamped, max_marks_in)
+                    st.rerun(scope="fragment")
+            if marks_rec:
+                st.caption(f"Recorded: {marks_rec['scored']:g} / {marks_rec['max']:g} marks for this question.")
+
+            st.markdown("---")
+            if rating is None:
+                st.write("**Rate your confidence:**")
+                c1, c2, c3 = st.columns(3)
+                if c1.button("🔴 Hard", key=f"{key}_hard"):
+                    _record_viva(topic_id, key, 1)
+                    st.rerun(scope="fragment")
+                if c2.button("🟡 Good", key=f"{key}_good"):
+                    _record_viva(topic_id, key, 2)
+                    st.rerun(scope="fragment")
+                if c3.button("🟢 Easy", key=f"{key}_easy"):
+                    _record_viva(topic_id, key, 3)
+                    st.rerun(scope="fragment")
+            else:
+                label = {1: "🔴 Hard", 2: "🟡 Good", 3: "🟢 Easy"}[rating]
+                st.info(f"Logged: **{label}**")
 
 
 # ---------------------------------------------------------------------------
@@ -443,11 +488,54 @@ def _study_view(content):
     ti = 0
     if mcqs:
         with tabs[ti]:
+            tp = _topic_progress(tid)
+            answered = len(tp["mcq_attempts"])
+            correct = sum(1 for a in tp["mcq_attempts"].values() if a["correct"])
+            col_p, col_cnt = st.columns([3, 1])
+            with col_p:
+                st.progress(answered / len(mcqs) if mcqs else 0)
+            with col_cnt:
+                acc_txt = f" · {round(correct/answered*100)}%" if answered else ""
+                st.caption(f"{answered} / {len(mcqs)} answered{acc_txt}")
             for n, mcq in enumerate(mcqs, 1):
                 _mcq_card(tid, mcq, n, key=f"uqmcq_{tid}_{n}")
         ti += 1
     if vivas:
         with tabs[ti]:
+            ratings = _topic_viva_progress(tid)
+            marks = _topic_viva_marks(tid)
+            reviewed = len(ratings)
+            marks_scored_sum = sum(m["scored"] for m in marks.values())
+            marks_max_sum = sum(m["max"] for m in marks.values())
+
+            col_p, col_cnt, col_marks = st.columns([2.3, 1, 1])
+            with col_p:
+                st.progress(reviewed / len(vivas) if vivas else 0)
+            with col_cnt:
+                st.caption(f"{reviewed} / {len(vivas)} reviewed")
+            with col_marks:
+                st.markdown(
+                    f'<div style="background:#16324A;border-radius:10px;padding:6px 14px;text-align:center;">'
+                    f'<div style="color:#9FC4DE;font-size:0.7rem;font-weight:600;text-transform:uppercase;'
+                    f'letter-spacing:0.05em;">Your Marks</div>'
+                    f'<div style="color:#FAFAF8;font-size:1.3rem;font-weight:700;">'
+                    f'{marks_scored_sum:g} / {marks_max_sum:g}</div></div>',
+                    unsafe_allow_html=True)
+
+            if reviewed:
+                hard_v = sum(1 for v in ratings.values() if v == 1)
+                good_v = sum(1 for v in ratings.values() if v == 2)
+                easy_v = sum(1 for v in ratings.values() if v == 3)
+                st.markdown(
+                    f'<span style="background:#2A1010;color:#EF5350;padding:4px 12px;border-radius:20px;'
+                    f'font-size:0.8rem;font-weight:600;margin-right:6px;">🔴 Hard: {hard_v}</span>'
+                    f'<span style="background:#2A1E10;color:#C9A84C;padding:4px 12px;border-radius:20px;'
+                    f'font-size:0.8rem;font-weight:600;margin-right:6px;">🟡 Good: {good_v}</span>'
+                    f'<span style="background:#1A3020;color:#4CAF50;padding:4px 12px;border-radius:20px;'
+                    f'font-size:0.8rem;font-weight:600;">🟢 Easy: {easy_v}</span>',
+                    unsafe_allow_html=True)
+            st.write("")
+
             for n, qa in enumerate(vivas, 1):
                 _viva_card(tid, qa, n, key=f"uqviva_{tid}_{n}")
 
