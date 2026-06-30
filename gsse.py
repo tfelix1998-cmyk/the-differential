@@ -686,13 +686,11 @@ def render_gsse(persist_get=None, persist_set=None, user=None):
     _ensure_loaded(persist_get, user)
     _, qindex = _load_questions()
 
-    nav = st.radio("section", ["📊 Dashboard", "✍️ Practice", "🗂️ Topics"],
+    nav = st.radio("section", ["📊 Dashboard", "🗂️ Topics"],
                    horizontal=True, label_visibility="collapsed", key="_gsse_nav")
 
     if nav.endswith("Dashboard"):
         _dashboard_view(qindex, user)
-    elif nav.endswith("Practice"):
-        _practice_view(qindex)
     else:
         view = st.session_state.get("_gsse_view", "topics")
         if view == "subtopics":
