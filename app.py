@@ -2153,6 +2153,17 @@ with tab_mock:
     # If a mock is currently running, render it; otherwise show the builder.
     mock_state = st.session_state.get("mock_running", False)
 
+    def _strip_subsection(disp):
+        """Many banks are named 'Sub-section - Topic Name (MCQ)' (e.g. UQ
+        Critical Care Module). Split that out so the checkbox can show just
+        the topic name, with the sub-section as a small group header instead
+        of being repeated — and drop the trailing '(MCQ)' noise."""
+        name = re.sub(r"\s*\((?:MCQ|VIVA)\)\s*$", "", disp).strip()
+        if " - " in name:
+            sub, topic_nm = name.split(" - ", 1)
+            return sub.strip(), topic_nm.strip()
+        return None, name
+
     if not mock_state:
         if not topics:
             st.info("You haven't generated any MCQs yet. Generate questions from a document first, then come back to build a mock exam.")
@@ -2165,25 +2176,46 @@ with tab_mock:
                 unsafe_allow_html=True
             )
 
-            # Group topics by free-form category ("Category :: Name")
+            # Group topics by free-form category ("Category :: Name"), then by
+            # an optional sub-section embedded in the name ("Sub - Topic (MCQ)")
             mock_cats = {}
             for topic, doc_hash, n in topics:
                 cat, disp = split_category(topic)
-                mock_cats.setdefault(cat, []).append((disp, topic, doc_hash, n))
+                sub, clean_name = _strip_subsection(disp)
+                mock_cats.setdefault(cat, {}).setdefault(sub, []).append((clean_name, topic, doc_hash, n))
 
             cat_filter = st.selectbox("Filter by category",
                                       ["All categories"] + sorted(mock_cats.keys()),
                                       key="mock_cat_filter")
             shown_cats = sorted(mock_cats.keys()) if cat_filter == "All categories" else [cat_filter]
 
-            # Topic selection checkboxes, grouped under category headers
+            # Topic selection — one collapsible card per category, with
+            # sub-section sub-headers and a "select all in section" shortcut.
             selected_hashes = []
             for cat in shown_cats:
-                st.markdown(f"**{cat}**")
-                for disp, topic, doc_hash, n in sorted(mock_cats[cat]):
-                    short = disp if len(disp) <= 45 else disp[:42] + "…"
-                    if st.checkbox(f"{short}  ·  {n} Q", key=f"mock_pick_{doc_hash}"):
-                        selected_hashes.append(doc_hash)
+                subsections = mock_cats[cat]
+                cat_total_q = sum(n for items in subsections.values() for _, _, _, n in items)
+                cat_total_topics = sum(len(items) for items in subsections.values())
+                with st.expander(f"**{cat}**  ·  {cat_total_topics} topics · {cat_total_q} Q",
+                                  expanded=(len(shown_cats) == 1)):
+                    for sub in sorted(subsections.keys(), key=lambda s: (s is None, s or "")):
+                        items = sorted(subsections[sub])
+                        sub_hashes = [doc_hash for _, _, doc_hash, _ in items]
+                        if sub:
+                            head_l, head_r = st.columns([5, 1.3])
+                            head_l.markdown(f"<span style='color:#C9A84C;font-weight:700;"
+                                            f"font-size:0.85rem;'>{sub}</span>", unsafe_allow_html=True)
+                            already_all = all(st.session_state.get(f"mock_pick_{h}", False) for h in sub_hashes)
+                            btn_label = "Clear" if already_all else "Select all"
+                            if head_r.button(btn_label, key=f"mock_selall_{cat}_{sub}", use_container_width=True):
+                                for h in sub_hashes:
+                                    st.session_state[f"mock_pick_{h}"] = not already_all
+                                st.rerun()
+                        for clean_name, topic, doc_hash, n in items:
+                            if st.checkbox(f"{clean_name}  ·  {n} Q", key=f"mock_pick_{doc_hash}"):
+                                selected_hashes.append(doc_hash)
+                        if sub:
+                            st.write("")
 
             st.markdown("---")
 
@@ -2192,6 +2224,9 @@ with tab_mock:
             for h in selected_hashes:
                 pool.extend(get_mcqs_for_hash(h))
             pool_size = len(pool)
+
+            if selected_hashes:
+                st.caption(f"✅ {len(selected_hashes)} topic(s) selected · {pool_size} questions in pool")
 
             col_n, col_mode = st.columns(2)
             with col_n:
@@ -2681,12 +2716,14 @@ with tab_help:
 **The Differential** is a study tool for medical exams. You give it material (lecture
 notes, or curated question banks), and it helps you drill that material as multiple-choice
 questions, viva (spoken-style) questions, and Anki flashcards — and tracks how you're doing.
+It also bundles three large pre-built question banks (GSSE, PSA, and the UQ module) that
+work straight away with no setup.
 
 #### 👤 First: pick who you are
 Use the **"Studying as"** selector in the sidebar (Terry or Alex). Your scores, ratings,
 and progress are tracked separately. The question banks themselves are shared.
 
-#### 🗂️ The two ways to get questions
+#### 🗂️ The two ways to get MCQ/Viva/Anki questions
 1. **Generate from notes** *(uses the AI — counts toward daily limits)*
    In the sidebar, choose "Generate from notes", optionally add a Category and Subtopic,
    upload a PDF, then open the MCQ / Viva / Anki tab and press the Generate button. The AI
@@ -2696,30 +2733,43 @@ and progress are tracked separately. The question banks themselves are shared.
    Load them from the picker at the top of the MCQ and Viva tabs. These cost nothing and
    load instantly.
 
+GSSE, PSA, and UQ are separate, self-contained banks (see below) — they don't need
+generating or loading, they're just always there.
+
 #### 📚 The tabs
-- **Dashboard** — your stats: accuracy, performance by topic (red = needs work), progress over time, and any questions you flagged.
-- **Viva** — spoken-exam-style Q&A. Read the question, think/say your answer, reveal the model answer, then rate your confidence (Hard / Good / Easy).
+
+**Your stats and practice tools**
+- **Dashboard** — your overall stats: accuracy, performance by topic (red = needs work), progress over time, and any questions you flagged.
+- **Viva** — spoken-exam-style Q&A. Read the question, think/say your answer, reveal the model answer, then rate your confidence (Hard / Good / Easy). You can also enter your own marks if you're scoring against a real mark scheme.
 - **MCQ** — multiple-choice. Exam mode (timed, with a question navigator and mark-for-review) or review mode. You can also leave 👍/👎 feedback and notes on each question.
 - **Anki** — exports cloze-deletion flashcards you can import into the Anki app.
-- **Mock Exam** — build a custom exam by picking topics from your saved banks. Instant, no AI cost.
+- **Mock Exam** — build a custom exam by ticking topics from your saved banks (Learn Ortho, UQ Critical Care Module, and anything generated/imported). Topics are grouped by category — open a category to see its topics, use "Select all" to grab a whole section at once. Instant, no AI cost.
+
+**Built-in question banks (always available, no setup)**
+- **PSA** — Prescribing Safety Assessment practice: 8 item styles (SBA, calculation, matching, prescription writing, etc.), 200 marks, mirrors the real PSA format. Pick a section from the landing page and work through it item by item.
+- **GSSE** — RACS Generic Surgical Sciences Examination bank (Anatomy / Physiology / Pathology), organised the same way the real exam is structured. Dashboard shows readiness by component; Topics lets you drill down to a subtopic and practise its questions (Type X true/false, Type A single-best-answer, and Statement & Reason questions).
+- **UQ** — the UQ Critical Care Module (Emergency Medicine & Trauma, Anaesthesia & Pain Management, Intensive Care) plus Learn Ortho's Orthopaedic Trauma Framework viva. Same Dashboard/Topics shape as GSSE. Open a topic and you'll see an MCQs tab and a Viva tab side by side — the Viva questions work the same way as the main Viva tab (write your own answer, reveal, rate confidence, enter marks).
+
+**Reference and other tools**
 - **Library** — shared reference notes. Upload a PDF or paste text; it stores the text (the original PDF stays on your device). You can read notes here and generate questions straight from them.
 - **Procedures** — practise OSCE procedural skills two ways: Phase 1 ticks off the steps as a checklist; Phase 2 hides them so you write the steps from memory then reveal and compare. You can add your own procedures too.
 
 #### 🏷️ Categories
 When uploading or naming a bank, you can file things under a **Category** and **Subtopic**
 (e.g. "ICU Week 8" › "ARDS"). The MCQ, Viva, and Mock Exam tabs let you filter by category.
+GSSE and UQ have their own fixed topic structure instead, since they're pre-built banks.
 
 #### ✅ Strengths
 - Turns your own notes into practice questions quickly.
-- Saved banks and the library are free and instant (no AI cost).
+- Saved banks, the library, and the three built-in banks (PSA/GSSE/UQ) are free and instant (no AI cost).
 - Tracks weak topics so you know what to revise.
 - Works on any device through the web link; data is saved permanently.
 
 #### ⚠️ Limitations (honest)
-- **AI questions are only as good as the notes given**, and the AI can occasionally make
-  mistakes or include something slightly off — always sanity-check against a trusted source.
+- **AI-generated questions are only as good as the notes given**, and the AI can occasionally
+  make mistakes or include something slightly off — always sanity-check against a trusted source.
 - **Generating questions uses a daily free AI quota.** If generation fails or is slow, it's
-  usually the quota or a busy server — saved banks and the library don't have this problem.
+  usually the quota or a busy server — saved banks, the library, and PSA/GSSE/UQ don't have this problem.
 - **The library stores text only** — original formatting, images, and diagrams from PDFs are
   not preserved. Keep your original files elsewhere (e.g. Google Drive) for the pristine version.
 - **Scanned/image PDFs won't work** for generation or the library — the text must be selectable.
