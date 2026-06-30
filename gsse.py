@@ -84,7 +84,15 @@ def _progress():
 
 
 def _mark_dirty():
+    """PERF NOTE: question cards run inside @st.fragment so answering a
+    question only reruns that fragment, not the whole render_gsse() body —
+    which means the _flush() call at the bottom of render_gsse() never
+    executes during a fragment-only rerun. So we flush right here instead,
+    using the persist hooks stashed by render_gsse() at the top of the page.
+    _flush() itself only writes if the dirty flag is set, so this is cheap."""
     st.session_state["_gsse_dirty"] = True
+    _flush(st.session_state.get("_gsse_persist_set"),
+           st.session_state.get("_gsse_persist_user", "you"))
 
 
 def _events():
@@ -491,8 +499,12 @@ def _render_spot(q, key):
 _RENDERERS = {"X": _render_typeX, "A": _render_typeA, "SPOT": _render_spot, "B": _render_typeA}
 
 
+@st.fragment
 def _question_card(q, key_prefix, number):
-    """Render one question; record the attempt if checked."""
+    """Render one question; record the attempt if checked.
+    PERF: this is its own fragment, so picking a radio option, ticking a T/F
+    checkbox, or clicking Check answer only reruns this one question — not
+    the rest of the page, the rest of GSSE, or the other 9 tabs in the app."""
     flag = "  ·  ⚑ *verify vs AU guidelines*" if q.get("needs_au_review") else ""
     st.markdown(f"**Q{number}**{flag}")
     renderer = _RENDERERS.get(q.get("type"), _render_typeA)
@@ -683,6 +695,8 @@ def _study_view(qindex):
 
 def render_gsse(persist_get=None, persist_set=None, user=None):
     user = user or "you"
+    st.session_state["_gsse_persist_set"] = persist_set
+    st.session_state["_gsse_persist_user"] = user
     _ensure_loaded(persist_get, user)
     _, qindex = _load_questions()
 
