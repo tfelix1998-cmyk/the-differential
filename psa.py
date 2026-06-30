@@ -255,7 +255,7 @@ def _render_sba(item, kp):
                 st.warning("Select an option first.")
             else:
                 st.session_state[sub_key] = options.index(choice)
-                st.rerun()
+                st.rerun(scope="fragment")
         return None
 
     chosen = st.session_state[sub_key]
@@ -299,7 +299,7 @@ def _render_cal(item, kp):
                 st.warning("Enter an answer first.")
             else:
                 st.session_state[sub_key] = float(val)
-                st.rerun()
+                st.rerun(scope="fragment")
         return None
 
     given = st.session_state[sub_key]
@@ -362,7 +362,7 @@ def _render_rev(item, kp):
                 "a": [names.index(x) for x in sel_a],
                 "b": [names.index(x) for x in sel_b],
             }
-            st.rerun()
+            st.rerun(scope="fragment")
         return None
 
     sub = st.session_state[sub_key]
@@ -440,7 +440,7 @@ def _render_pws(item, kp):
             else:
                 st.session_state[sub_key] = {"drug": drug, "dose": dose,
                                              "route": route, "freq": freq, "dur": dur}
-                st.rerun()
+                st.rerun(scope="fragment")
         return None
 
     sub = st.session_state[sub_key]
@@ -493,7 +493,7 @@ def _render_pws(item, kp):
 
     if st.button("✓ Record mark", key=f"{kp}_record", type="primary"):
         st.session_state[rec_key] = drug_mark + dose_mark
-        st.rerun()
+        st.rerun(scope="fragment")
     st.caption("Confirm once you're happy with the dosage mark.")
     return None
 
@@ -547,35 +547,44 @@ def _run_section(style, c, conn, SUPABASE_ENABLED, supabase, user):
     with main:
         item = items[idx]
         kp = f"psa_{style}_{idx}"
-        # progress bar
-        pct = ((idx + 1) / len(items)) * 100
-        st.markdown(
-            f'<div style="display:flex;justify-content:space-between;align-items:center;'
-            f'background:{CARD};border:1px solid {BORDER};border-radius:12px;'
-            f'padding:12px 18px;margin-bottom:14px;">'
-            f'<span style="font-weight:700;color:{GOLD};">Item {idx+1} / {len(items)}</span>'
-            f'<div style="flex:1;margin:0 18px;background:{BORDER};border-radius:4px;height:6px;">'
-            f'<div style="width:{pct:.0f}%;background:{GOLD};height:6px;border-radius:4px;"></div></div>'
-            f'<span style="color:{MUTE};font-weight:600;">{item["id"]}</span></div>',
-            unsafe_allow_html=True)
 
-        outcome = _render_item(item, kp)
-        if outcome is not None and item["id"] not in results:
-            marks, maxm = outcome
-            results[item["id"]] = {"marks": marks, "max": maxm}
-            _log(c, conn, SUPABASE_ENABLED, supabase, item, marks, maxm, user)
+        @st.fragment
+        def _item_panel(item, kp, idx, total, results, res_key):
+            """PERF: own fragment — submitting an answer (radio pick, number
+            entry, matching, or the PWS record-mark flow) only reruns this
+            panel, not the whole 10-tab app. Previous/Next stay a full
+            st.rerun() (default, even inside a fragment) so the item
+            navigator in the nav column stays in sync."""
+            pct = ((idx + 1) / total) * 100
+            st.markdown(
+                f'<div style="display:flex;justify-content:space-between;align-items:center;'
+                f'background:{CARD};border:1px solid {BORDER};border-radius:12px;'
+                f'padding:12px 18px;margin-bottom:14px;">'
+                f'<span style="font-weight:700;color:{GOLD};">Item {idx+1} / {total}</span>'
+                f'<div style="flex:1;margin:0 18px;background:{BORDER};border-radius:4px;height:6px;">'
+                f'<div style="width:{pct:.0f}%;background:{GOLD};height:6px;border-radius:4px;"></div></div>'
+                f'<span style="color:{MUTE};font-weight:600;">{item["id"]}</span></div>',
+                unsafe_allow_html=True)
 
-        st.markdown("---")
-        cprev, cnext = st.columns(2)
-        with cprev:
-            if idx > 0 and st.button("← Previous", key=f"psa_{style}_prev", use_container_width=True):
-                st.session_state[idx_key] = idx - 1
-                st.rerun()
-        with cnext:
-            if idx < len(items) - 1 and st.button("Next →", key=f"psa_{style}_next",
+            outcome = _render_item(item, kp)
+            if outcome is not None and item["id"] not in results:
+                marks, maxm = outcome
+                results[item["id"]] = {"marks": marks, "max": maxm}
+                _log(c, conn, SUPABASE_ENABLED, supabase, item, marks, maxm, user)
+
+            st.markdown("---")
+            cprev, cnext = st.columns(2)
+            with cprev:
+                if idx > 0 and st.button("← Previous", key=f"psa_{style}_prev", use_container_width=True):
+                    st.session_state[idx_key] = idx - 1
+                    st.rerun()
+            with cnext:
+                if idx < total - 1 and st.button("Next →", key=f"psa_{style}_next",
                                                   type="primary", use_container_width=True):
-                st.session_state[idx_key] = idx + 1
-                st.rerun()
+                    st.session_state[idx_key] = idx + 1
+                    st.rerun()
+
+        _item_panel(item, kp, idx, len(items), results, res_key)
 
     # Section running total
     if results:
