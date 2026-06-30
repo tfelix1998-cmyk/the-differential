@@ -15,6 +15,7 @@ from datetime import date, timedelta
 from prompts import VIVA_PROMPT, MCQ_PROMPT, ANKI_PROMPT, IMPORT_MCQ_PROMPT
 from psa import render_psa
 from gsse import render_gsse
+from uq import render_uq
 try:
     from builtin_questions import BUILTIN_BANKS
 except Exception:
@@ -270,6 +271,10 @@ def get_db():
     cur.execute("""CREATE TABLE IF NOT EXISTS gsse_progress (
         user TEXT PRIMARY KEY, data TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
+    # UQ study progress: same shape as gsse_progress, one JSON blob per user.
+    cur.execute("""CREATE TABLE IF NOT EXISTS uq_progress (
+        user TEXT PRIMARY KEY, data TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)""")
     conn.commit()
     return conn
 
@@ -340,6 +345,42 @@ def gsse_save_progress(progress, user):
             pass
 
 
+# ── UQ progress persistence ─────────────────────────────────────────────────
+# Same pattern as GSSE progress above — one JSON blob per user.
+def uq_load_progress(user):
+    if SUPABASE_ENABLED and supabase is not None:
+        try:
+            res = supabase.table("uq_progress").select("data").eq("user", user).limit(1).execute()
+            if res.data:
+                return res.data[0].get("data") or {}
+        except Exception:
+            pass
+    try:
+        row = c.execute("SELECT data FROM uq_progress WHERE user=?", (user,)).fetchone()
+        if row and row[0]:
+            return json.loads(row[0])
+    except Exception:
+        pass
+    return {}
+
+
+def uq_save_progress(progress, user):
+    try:
+        c.execute(
+            "INSERT INTO uq_progress (user, data) VALUES (?, ?) "
+            "ON CONFLICT(user) DO UPDATE SET data=excluded.data, timestamp=CURRENT_TIMESTAMP",
+            (user, json.dumps(progress)),
+        )
+        conn.commit()
+    except Exception:
+        pass
+    if SUPABASE_ENABLED and supabase is not None:
+        try:
+            supabase.table("uq_progress").upsert({"user": user, "data": progress}).execute()
+        except Exception:
+            pass
+
+
 def doc_fingerprint(pdf_text):
     """A stable hash of the document text — identifies a document uniquely."""
     return hashlib.sha256(pdf_text.encode("utf-8")).hexdigest()
@@ -387,6 +428,7 @@ def save_to_cache(doc_hash, topic, viva, mcqs, anki):
                 "mcq_json": json.dumps(mcqs),
                 "anki_text": anki,
             }).execute()
+            list_topics_with_viva.clear(); list_topics_with_mcqs.clear()
             return
         except Exception:
             pass  # fall through to SQLite
@@ -396,6 +438,7 @@ def save_to_cache(doc_hash, topic, viva, mcqs, anki):
         (doc_hash, topic, json.dumps(viva), json.dumps(mcqs), anki)
     )
     conn.commit()
+    list_topics_with_viva.clear(); list_topics_with_mcqs.clear()
 
 
 def seed_builtin_banks():
@@ -434,8 +477,12 @@ seed_builtin_banks()
 
 
 def list_builtin_viva():
-    """Return {bank_name: [qa, …]} for baked-in viva banks that have content."""
-    return {name: qs for name, qs in BUILTIN_VIVA.items() if qs}
+    """Return {bank_name: [qa, …]} for baked-in viva banks that have content.
+    Excludes banks that have been moved to their own dedicated section (e.g.
+    'Orthopaedic Trauma Framework (Viva)' now lives under the UQ tab)."""
+    _moved_to_uq = {"Orthopaedic Trauma Framework (Viva)"}
+    return {name: qs for name, qs in BUILTIN_VIVA.items()
+            if qs and name not in _moved_to_uq}
 
 
 def split_category(name):
@@ -450,6 +497,7 @@ def split_category(name):
     return "Uncategorised", name
 
 
+@st.cache_data(ttl=15, show_spinner=False)
 def list_topics_with_viva():
     """Return [(topic, doc_hash, viva_count), …] for every saved doc that has viva."""
     rows = []
@@ -509,6 +557,7 @@ def log_mcq_attempt(topic, question_text, selected, correct, is_correct, user):
         conn.commit()
     except Exception:
         pass
+    fetch_attempts.clear()  # PERF: invalidate so Dashboard reflects this immediately
 
 
 def log_viva_review(topic, question_text, confidence, user):
@@ -527,8 +576,15 @@ def log_viva_review(topic, question_text, confidence, user):
         conn.commit()
     except Exception:
         pass
+    fetch_viva.clear()  # PERF: invalidate so Dashboard reflects this immediately
 
 
+# PERF: these used to fire a fresh Supabase/SQLite query on every single
+# rerun (i.e. every button click anywhere in the app, not just on this tab),
+# since Streamlit reruns the whole script top-to-bottom on any interaction.
+# A short TTL means at most one query per ~15s of active use, and writes
+# above call .clear() so newly-logged attempts still show up immediately.
+@st.cache_data(ttl=15, show_spinner=False)
 def fetch_attempts(user):
     """Return list of attempt dicts for a user: {topic, is_correct, timestamp}.
     Prefers Supabase, falls back to SQLite."""
@@ -544,6 +600,7 @@ def fetch_attempts(user):
     return [{"topic": t, "is_correct": ic, "ts": ts} for t, ic, ts in rows]
 
 
+@st.cache_data(ttl=15, show_spinner=False)
 def fetch_viva(user):
     """Return list of viva review dicts: {topic, confidence, timestamp}."""
     if SUPABASE_ENABLED:
@@ -755,6 +812,7 @@ def update_library_note(note_id, title, category, subtopic, content):
         return False
 
 
+@st.cache_data(ttl=15, show_spinner=False)
 def list_topics_with_mcqs():
     """Return [(topic, doc_hash, mcq_count), …] for every saved doc that has MCQs."""
     rows = []
@@ -1273,9 +1331,19 @@ if st.session_state.get("gen_errors"):
         st.error(f"⚠️ Generation issue → {err}")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_psa, tab_gsse, tab_library, tab_proc, tab_help = st.tabs(
-    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "💊  PSA", "🧠  GSSE", "📚  Library", "🩺  Procedures", "❓  How to use"]
+tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_psa, tab_gsse, tab_uq, tab_library, tab_proc, tab_help = st.tabs(
+    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "💊  PSA", "🧠  GSSE", "🎓  UQ", "📚  Library", "🩺  Procedures", "❓  How to use"]
 )
+
+# ═════════════════════════════════════════════════════════════════════════════
+# UQ TAB — UQ Critical Care Module + Orthopaedic Trauma Framework
+# ═════════════════════════════════════════════════════════════════════════════
+with tab_uq:
+    render_uq(
+        persist_get=uq_load_progress,
+        persist_set=uq_save_progress,
+        user=st.session_state.get("current_user", "Terry"),
+    )
 
 # ═════════════════════════════════════════════════════════════════════════════
 # PSA TAB
@@ -1571,7 +1639,11 @@ with tab_viva:
             )
             st.markdown("")
 
-        for i, qa in enumerate(viva_data):
+        @st.fragment
+        def _viva_question_block(i, qa, marks_scored_dict, marks_max_dict, vtopic):
+            """PERF: its own fragment — revealing an answer, recording marks,
+            or rating confidence on ONE question no longer reruns the whole
+            10-tab app, just this one question's expander."""
             logged = st.session_state["viva_confidence_logged"].get(i)
             scored_already = i in marks_scored_dict
             badge = {1:" 🔴", 2:" 🟡", 3:" 🟢"}.get(logged, "")
@@ -1584,7 +1656,7 @@ with tab_viva:
                     st.session_state["viva_revealed"][i] = True
 
                 if st.session_state["viva_revealed"].get(i):
-                    lines = qa["answer"].split("\\n")
+                    lines = qa["answer"].split("\n")
                     bullets = "".join(f"<li style='margin:4px 0;'>{l.strip()}</li>" for l in lines if l.strip())
                     st.markdown(
                         f'<div style="background:#1E1A10;border-left:4px solid #C9A84C;'
@@ -1613,7 +1685,7 @@ with tab_viva:
                         if st.button("Record marks", key=f"record_marks_{i}"):
                             marks_max_dict[i] = max_marks_in
                             marks_scored_dict[i] = min(scored_in, max_marks_in) if max_marks_in else scored_in
-                            st.rerun()
+                            st.rerun(scope="fragment")
 
                     if scored_already:
                         st.caption(f"Recorded: {marks_scored_dict[i]:g} / {marks_max_dict[i]:g} marks for this question.")
@@ -1623,21 +1695,25 @@ with tab_viva:
                         st.write("**Rate your confidence:**")
                         c1, c2, c3 = st.columns(3)
                         def _log(idx, level):
-                            vtopic = st.session_state.get("viva_bank_name") or topic_name
                             log_viva_review(vtopic, st.session_state["viva_data"][idx]["question"], level, st.session_state.get("current_user","Terry"))
                             conn.commit()
                             st.session_state["viva_confidence_logged"][idx] = level
-                        if c1.button("🔴 Hard", key=f"hard_{i}"): _log(i, 1); st.rerun()
-                        if c2.button("🟡 Good", key=f"good_{i}"): _log(i, 2); st.rerun()
-                        if c3.button("🟢 Easy", key=f"easy_{i}"): _log(i, 3); st.rerun()
+                        if c1.button("🔴 Hard", key=f"hard_{i}"): _log(i, 1); st.rerun(scope="fragment")
+                        if c2.button("🟡 Good", key=f"good_{i}"): _log(i, 2); st.rerun(scope="fragment")
+                        if c3.button("🟢 Easy", key=f"easy_{i}"): _log(i, 3); st.rerun(scope="fragment")
                     else:
                         label = {1:"🔴 Hard", 2:"🟡 Good", 3:"🟢 Easy"}[logged]
                         st.info(f"Logged: **{label}**")
+
+        for i, qa in enumerate(viva_data):
+            vtopic = st.session_state.get("viva_bank_name") or topic_name
+            _viva_question_block(i, qa, marks_scored_dict, marks_max_dict, vtopic)
 
         if marks_scored_dict and st.button("↺ Reset all marks for this bank", key="reset_viva_marks"):
             st.session_state["viva_marks_scored"] = {}
             st.session_state["viva_marks_max"] = {}
             st.rerun()
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # MCQ TAB
@@ -1783,39 +1859,20 @@ with tab_mcq:
                         st.session_state["mcq_exam_idx"] = i
                         st.rerun()
 
-            with main_col:
-                # Top bar
-                pct = ((idx + 1) / total) * 100
-                attempted = len(submitted)
-                correct_n = sum(1 for v in submitted.values() if v["correct"])
-
-                st.markdown(
-                    f'<div style="display:flex;justify-content:space-between;align-items:center;'
-                    f'background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
-                    f'padding:14px 20px;margin-bottom:16px;">'
-                    f'<span style="font-weight:700;color:#C9A84C;font-size:1rem;">Item {idx+1} / {total}</span>'
-                    f'<div style="flex:1;margin:0 20px;background:#2E2A22;border-radius:4px;height:6px;">'
-                    f'<div style="width:{pct:.0f}%;background:#C9A84C;height:6px;border-radius:4px;transition:width 0.3s;"></div></div>'
-                    f'<span style="font-weight:700;color:#8A8070;font-family:monospace;font-size:1rem;">⏱ {fmt_time(elapsed)}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-
-                if attempted:
-                    acc = correct_n / attempted * 100
-                    st.markdown(
-                        f'<div style="display:flex;gap:16px;margin-bottom:12px;">'
-                        f'<span style="background:#1A3020;color:#4CAF50;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">✅ {correct_n} correct</span>'
-                        f'<span style="background:#2A1010;color:#EF5350;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">❌ {attempted-correct_n} incorrect</span>'
-                        f'<span style="background:#252015;color:#C9A84C;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">📊 {acc:.0f}% accuracy</span>'
-                        f'</div>', unsafe_allow_html=True
-                    )
-
+            @st.fragment
+            def _mcq_exam_answer_area(idx, total, topic_name):
+                """PERF: picking a radio option re-renders only this fragment
+                (automatic). Submit Answer uses a fragment-scoped rerun for
+                instant feedback. Buttons that change which item is shown
+                (Mark, Previous, Skip, Next, Finish) use a full st.rerun() so
+                the item navigator in nav_col stays in sync — that's the
+                default behaviour of st.rerun() even inside a fragment."""
+                submitted = st.session_state.get("mcq_submitted", {})
+                marked = st.session_state.setdefault("mcq_marked", set())
                 mcq = mcqs[idx]
                 correct_letter = mcq["correct_answer_letter"].strip().upper()
                 is_submitted = idx in submitted
 
-                # Mark for review toggle
                 mark_label = "⚑ Unmark" if idx in marked else "⚑ Mark for review"
                 if st.button(mark_label, key=f"exam_mark_{idx}"):
                     if idx in marked:
@@ -1824,7 +1881,6 @@ with tab_mcq:
                         marked.add(idx)
                     st.rerun()
 
-                # Question stem — selectable for highlighting
                 render_image(mcq)
                 st.markdown(
                     f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
@@ -1850,7 +1906,7 @@ with tab_mcq:
                                 is_correct = choice.strip()[0].upper() == correct_letter
                                 log_mcq_attempt(topic_name, mcq["question_text"], choice, correct_letter, is_correct, st.session_state.get("current_user","Terry"))
                                 st.session_state["mcq_submitted"][idx] = {"choice": choice, "correct": is_correct}
-                                st.rerun()
+                                st.rerun(scope="fragment")
                             else:
                                 st.warning("Select an answer first.")
                     with col_skip:
@@ -1910,6 +1966,36 @@ with tab_mcq:
                             if st.button("🏁 Finish Session", key="ef", type="primary", use_container_width=True):
                                 st.session_state["mcq_mode"] = "results"; st.rerun()
 
+            with main_col:
+                # Top bar
+                pct = ((idx + 1) / total) * 100
+                attempted = len(submitted)
+                correct_n = sum(1 for v in submitted.values() if v["correct"])
+
+                st.markdown(
+                    f'<div style="display:flex;justify-content:space-between;align-items:center;'
+                    f'background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+                    f'padding:14px 20px;margin-bottom:16px;">'
+                    f'<span style="font-weight:700;color:#C9A84C;font-size:1rem;">Item {idx+1} / {total}</span>'
+                    f'<div style="flex:1;margin:0 20px;background:#2E2A22;border-radius:4px;height:6px;">'
+                    f'<div style="width:{pct:.0f}%;background:#C9A84C;height:6px;border-radius:4px;transition:width 0.3s;"></div></div>'
+                    f'<span style="font-weight:700;color:#8A8070;font-family:monospace;font-size:1rem;">⏱ {fmt_time(elapsed)}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+                if attempted:
+                    acc = correct_n / attempted * 100
+                    st.markdown(
+                        f'<div style="display:flex;gap:16px;margin-bottom:12px;">'
+                        f'<span style="background:#1A3020;color:#4CAF50;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">✅ {correct_n} correct</span>'
+                        f'<span style="background:#2A1010;color:#EF5350;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">❌ {attempted-correct_n} incorrect</span>'
+                        f'<span style="background:#252015;color:#C9A84C;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">📊 {acc:.0f}% accuracy</span>'
+                        f'</div>', unsafe_allow_html=True
+                    )
+
+                _mcq_exam_answer_area(idx, total, topic_name)
+
                 st.markdown("---")
                 if st.button("← Back to Mode Select", key="back_exam"):
                     st.session_state["mcq_mode"] = None
@@ -1927,12 +2013,16 @@ with tab_mcq:
             if attempted:
                 st.info(f"**{attempted}/{total}** answered · **{correct_n}** correct · **{correct_n/attempted*100:.0f}%** accuracy")
 
-            for i, mcq in enumerate(mcqs):
+            @st.fragment
+            def _mcq_review_question(i, mcq, topic_name):
+                """PERF: own fragment — picking an option or submitting on
+                question i only reruns this card, not all the others."""
+                submitted = st.session_state.get("mcq_submitted", {})
                 correct_letter = mcq["correct_answer_letter"].strip().upper()
                 is_submitted = i in submitted
 
                 status = ""
-                if i in submitted:
+                if is_submitted:
                     status = " ✅" if submitted[i]["correct"] else " ❌"
 
                 render_image(mcq)
@@ -1953,7 +2043,7 @@ with tab_mcq:
                             is_correct = choice.strip()[0].upper() == correct_letter
                             log_mcq_attempt(topic_name, mcq["question_text"], choice, correct_letter, is_correct, st.session_state.get("current_user","Terry"))
                             st.session_state["mcq_submitted"][i] = {"choice": choice, "correct": is_correct}
-                            st.rerun()
+                            st.rerun(scope="fragment")
                         else:
                             st.warning("Select an answer.")
                 else:
@@ -1978,6 +2068,9 @@ with tab_mcq:
                         render_feedback(mcq, f"fb_review_{i}")
 
                 st.markdown('<hr style="margin:20px 0;">', unsafe_allow_html=True)
+
+            for i, mcq in enumerate(mcqs):
+                _mcq_review_question(i, mcq, topic_name)
 
             st.markdown("---")
             if st.button("← Back to Mode Select", key="back_review"):
@@ -2220,77 +2313,86 @@ with tab_mock:
                 st.warning("⏱ Time's up — in the real exam you'd stop here. "
                            "You can keep answering for practice; your result still records.")
 
-            mcq = mqs[idx]
-            correct_letter = mcq["correct_answer_letter"].strip().upper()
-            is_sub = idx in submitted
+            mqs_ref = mqs  # closed over by the fragment below
 
-            # Mark-for-review toggle
-            mark_label = "⚑ Unmark" if idx in marked else "⚑ Mark for review"
-            if st.button(mark_label, key=f"mock_mark_{idx}"):
-                if idx in marked:
-                    marked.discard(idx)
-                else:
-                    marked.add(idx)
-                st.rerun()
+            @st.fragment
+            def _mock_answer_area(idx, total):
+                """PERF: same pattern as MCQ exam mode — Submit Answer gets a
+                fragment-scoped rerun for instant feedback; Mark/Previous/
+                Next/Finish use a full st.rerun() so nav_col stays in sync."""
+                submitted = st.session_state.get("mock_submitted", {})
+                marked = st.session_state["mock_marked"]
+                mcq = mqs_ref[idx]
+                correct_letter = mcq["correct_answer_letter"].strip().upper()
+                is_sub = idx in submitted
 
-            # Question stem (highlightable)
-            render_image(mcq)
-            st.markdown(
-                f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
-                f'padding:24px 28px;margin:12px 0 20px 0;user-select:text;cursor:text;">'
-                f'<p style="margin:0;font-size:1.02rem;line-height:1.75;color:#FAFAF8;">'
-                f'{mcq["question_text"]}</p></div>',
-                unsafe_allow_html=True
-            )
-
-            if not is_sub:
-                choice = st.radio("Answer", mcq["options"], key=f"mock_r_{idx}",
-                                  index=None, label_visibility="collapsed")
-                if st.button("Submit Answer", key=f"mock_sub_{idx}", type="primary"):
-                    if choice:
-                        ok = choice.strip()[0].upper() == correct_letter
-                        log_mcq_attempt("Mock Exam", mcq["question_text"], choice, correct_letter, ok, st.session_state.get("current_user","Terry"))
-                        conn.commit()
-                        st.session_state["mock_submitted"][idx] = {"choice": choice, "correct": ok}
-                        st.rerun()
+                mark_label = "⚑ Unmark" if idx in marked else "⚑ Mark for review"
+                if st.button(mark_label, key=f"mock_mark_{idx}"):
+                    if idx in marked:
+                        marked.discard(idx)
                     else:
-                        st.warning("Select an answer first.")
-            else:
-                sub = submitted[idx]
-                chosen_letter = sub["choice"].strip()[0].upper()
-                for opt in mcq["options"]:
-                    ol = opt.strip()[0].upper()
-                    ot = opt[2:].strip() if len(opt) > 2 else opt
-                    if ol == correct_letter:
-                        rc, bc, ic = "opt-row opt-correct", "badge badge-correct", "✓"
-                    elif ol == chosen_letter and not sub["correct"]:
-                        rc, bc, ic = "opt-row opt-wrong", "badge badge-wrong", "✗"
-                    else:
-                        rc, bc, ic = "opt-row opt-dim", "badge", ol
-                    st.markdown(f'<div class="{rc}"><span class="{bc}">{ic}</span><span>{ot}</span></div>',
-                                unsafe_allow_html=True)
-
-                with st.expander("📖 Explanation"):
-                    st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
-                    if mcq.get("key_learning_points"):
-                        st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
-                    st.markdown("---")
-                    render_feedback(mcq, f"fb_mock_{idx}")
-
-            # Navigation
-            st.markdown("")
-            cprev, cnext, cfin = st.columns(3)
-            with cprev:
-                if idx > 0 and st.button("← Previous", key="mock_prev", use_container_width=True):
-                    st.session_state["mock_idx"] = idx - 1; st.rerun()
-            with cnext:
-                if idx < total - 1 and st.button("Next →", key="mock_next", use_container_width=True):
-                    st.session_state["mock_idx"] = idx + 1; st.rerun()
-            with cfin:
-                if st.button("🏁 Finish", key="mock_fin", type="primary", use_container_width=True):
-                    st.session_state["mock_finished"] = True
-                    st.session_state["mock_running"] = False
+                        marked.add(idx)
                     st.rerun()
+
+                render_image(mcq)
+                st.markdown(
+                    f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+                    f'padding:24px 28px;margin:12px 0 20px 0;user-select:text;cursor:text;">'
+                    f'<p style="margin:0;font-size:1.02rem;line-height:1.75;color:#FAFAF8;">'
+                    f'{mcq["question_text"]}</p></div>',
+                    unsafe_allow_html=True
+                )
+
+                if not is_sub:
+                    choice = st.radio("Answer", mcq["options"], key=f"mock_r_{idx}",
+                                      index=None, label_visibility="collapsed")
+                    if st.button("Submit Answer", key=f"mock_sub_{idx}", type="primary"):
+                        if choice:
+                            ok = choice.strip()[0].upper() == correct_letter
+                            log_mcq_attempt("Mock Exam", mcq["question_text"], choice, correct_letter, ok, st.session_state.get("current_user","Terry"))
+                            conn.commit()
+                            st.session_state["mock_submitted"][idx] = {"choice": choice, "correct": ok}
+                            st.rerun(scope="fragment")
+                        else:
+                            st.warning("Select an answer first.")
+                else:
+                    sub = submitted[idx]
+                    chosen_letter = sub["choice"].strip()[0].upper()
+                    for opt in mcq["options"]:
+                        ol = opt.strip()[0].upper()
+                        ot = opt[2:].strip() if len(opt) > 2 else opt
+                        if ol == correct_letter:
+                            rc, bc, ic = "opt-row opt-correct", "badge badge-correct", "✓"
+                        elif ol == chosen_letter and not sub["correct"]:
+                            rc, bc, ic = "opt-row opt-wrong", "badge badge-wrong", "✗"
+                        else:
+                            rc, bc, ic = "opt-row opt-dim", "badge", ol
+                        st.markdown(f'<div class="{rc}"><span class="{bc}">{ic}</span><span>{ot}</span></div>',
+                                    unsafe_allow_html=True)
+
+                    with st.expander("📖 Explanation"):
+                        st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
+                        if mcq.get("key_learning_points"):
+                            st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
+                        st.markdown("---")
+                        render_feedback(mcq, f"fb_mock_{idx}")
+
+                # Navigation
+                st.markdown("")
+                cprev, cnext, cfin = st.columns(3)
+                with cprev:
+                    if idx > 0 and st.button("← Previous", key="mock_prev", use_container_width=True):
+                        st.session_state["mock_idx"] = idx - 1; st.rerun()
+                with cnext:
+                    if idx < total - 1 and st.button("Next →", key="mock_next", use_container_width=True):
+                        st.session_state["mock_idx"] = idx + 1; st.rerun()
+                with cfin:
+                    if st.button("🏁 Finish", key="mock_fin", type="primary", use_container_width=True):
+                        st.session_state["mock_finished"] = True
+                        st.session_state["mock_running"] = False
+                        st.rerun()
+
+            _mock_answer_area(idx, total)
 
     # ── Results screen ──
     if st.session_state.get("mock_finished"):
