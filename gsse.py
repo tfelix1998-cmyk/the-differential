@@ -335,15 +335,41 @@ def _inject_q_styles():
     st.session_state["_gsse_styles_injected"] = True
 
 
+def _opt_row_html(text, state):
+    """state: 'correct' | 'wrong' | 'dim' | None"""
+    cls = "opt-row"
+    trailing = ""
+    if state == "correct":
+        cls += " opt-correct"
+        trailing = ('<span style="margin-left:auto;font-weight:700;color:#FFFFFF;'
+                    'background:#4CAF6D;padding:4px 12px;border-radius:20px;font-size:0.82rem;">Correct</span>')
+    elif state == "wrong":
+        cls += " opt-wrong"
+        trailing = ('<span style="margin-left:auto;font-weight:700;color:#FFFFFF;'
+                    'background:#E5534B;padding:4px 12px;border-radius:20px;font-size:0.82rem;">Your answer</span>')
+    elif state == "dim":
+        cls += " opt-dim"
+    return f'<div class="{cls}"><span>{text}</span>{trailing}</div>'
+
+
+def _explanation_html(explanation, tags=None):
+    if not explanation:
+        return
+    st.markdown(f'<div class="explanation-box"><h4>Explanation</h4><div>{explanation}</div></div>',
+                unsafe_allow_html=True)
+    if tags:
+        pills = "".join(f'<span class="tag-pill">{t}</span>' for t in tags)
+        st.markdown(f'<div style="margin-top:10px;">{pills}</div>', unsafe_allow_html=True)
+
+
 def _render_typeX(q, key):
     _inject_q_styles()
     is_sr = "statement-reason" in (q.get("tags") or [])
+    answered_key = f"{key}_answered"
 
     if is_sr:
-        # --- Statement & Reason layout ---
         st.markdown('<div class="q-type-label">Statement &amp; Reason</div>', unsafe_allow_html=True)
         stmts = q.get("statements") or []
-        # First statement = S, second = R
         s_text = stmts[0]["text"] if len(stmts) > 0 else ""
         r_text = stmts[1]["text"] if len(stmts) > 1 else ""
         st.markdown('<div class="q-sr-label">Statement (S):</div>', unsafe_allow_html=True)
@@ -358,57 +384,80 @@ def _render_typeX(q, key):
             "S is false, R is true",
             "Both S and R are false",
         ]
-        picked_sr = st.radio("", sr_options, key=f"{key}_sr", index=None,
-                             label_visibility="collapsed")
 
-        if st.button("Check answer", key=f"{key}_check"):
-            # Work out correct SR option from statement answers
+        def _sr_correct_idx():
             s_true = stmts[0]["answer"] if len(stmts) > 0 else False
             r_true = stmts[1]["answer"] if len(stmts) > 1 else False
-            # Overall explanation field encodes the verdict for SR questions
             expl = q.get("explanation", "")
             if "S_TRUE_R_TRUE_EXPLAINS" in expl or "correctly explains" in expl:
-                correct_idx = 0
+                return 0
             elif "S_TRUE_R_TRUE_NOT_EXPLAINS" in expl or "does not correctly explain" in expl:
-                correct_idx = 1
+                return 1
             elif s_true and not r_true:
-                correct_idx = 2
+                return 2
             elif not s_true and r_true:
-                correct_idx = 3
-            else:
-                correct_idx = 4
-            correct_opt = sr_options[correct_idx]
-            ok = picked_sr == correct_opt
-            st.markdown(
-                f"<span class='{'q-result-ok' if ok else 'q-result-bad'}'>"
-                f"{'✅ Correct' if ok else '❌ Incorrect'}</span> — "
-                f"<em>{correct_opt}</em>",
-                unsafe_allow_html=True)
-            if q.get("explanation"):
-                st.markdown(f'<div class="q-expl">{q["explanation"]}</div>',
-                            unsafe_allow_html=True)
+                return 3
+            return 4
+
+        def _show_sr_result(picked_sr):
+            correct_opt = sr_options[_sr_correct_idx()]
+            for opt in sr_options:
+                if opt == correct_opt:
+                    state = "correct"
+                elif opt == picked_sr:
+                    state = "wrong"
+                else:
+                    state = "dim"
+                st.markdown(_opt_row_html(opt, state), unsafe_allow_html=True)
+            _explanation_html(q.get("explanation"))
+
+        if st.session_state.get(answered_key):
+            _show_sr_result(st.session_state.get(f"{key}_picked_sr"))
+            return None
+
+        picked_sr = st.radio("", sr_options, key=f"{key}_sr", index=None, label_visibility="collapsed")
+        if st.button("Submit Answer", key=f"{key}_check", type="primary", use_container_width=True):
+            st.session_state[answered_key] = True
+            st.session_state[f"{key}_picked_sr"] = picked_sr
+            ok = picked_sr == sr_options[_sr_correct_idx()]
+            _show_sr_result(picked_sr)
             return int(ok), 1
         return None
 
     else:
-        # --- True / False multi-statement layout ---
         st.markdown('<div class="q-type-label">True / False</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="q-stem">{q["stem"]}</div>', unsafe_allow_html=True)
-
         stmts = q.get("statements") or []
+
+        def _show_tf_result(picks):
+            correct = 0
+            for i, stmt in enumerate(stmts):
+                truth = "True" if stmt["answer"] else "False"
+                ok = picks[i] == truth
+                correct += int(ok)
+                icon = "✅" if ok else ("⬜" if picks[i] is None else "❌")
+                st.markdown(f"{icon} <strong>{stmt['text']}</strong> — <em>{truth}</em>", unsafe_allow_html=True)
+                if stmt.get("explanation"):
+                    st.markdown(f'<div class="q-expl">{stmt["explanation"]}</div>', unsafe_allow_html=True)
+            st.info(f"Score: {correct}/{len(stmts)}")
+            if q.get("explanation") and q["explanation"] != "See individual statement explanations above.":
+                _explanation_html(q["explanation"])
+            return correct
+
+        if st.session_state.get(answered_key):
+            _show_tf_result(st.session_state.get(f"{key}_picks", [None] * len(stmts)))
+            return None
+
         picks = []
-        st.markdown(
-            '<div class="tf-header"><div>True</div><div>False</div><div></div></div>',
-            unsafe_allow_html=True)
+        st.markdown('<div class="tf-header"><div>True</div><div>False</div><div></div></div>',
+                     unsafe_allow_html=True)
         for i, stmt in enumerate(stmts):
             col_t, col_f, col_text = st.columns([1, 1, 8])
             t_sel = col_t.checkbox("T", key=f"{key}_s{i}_T", label_visibility="collapsed")
             f_sel = col_f.checkbox("F", key=f"{key}_s{i}_F", label_visibility="collapsed")
-            col_text.markdown(
-                f'<div class="tf-stmt">{stmt["text"]}</div>', unsafe_allow_html=True)
-            # Enforce mutual exclusivity via pick logic
+            col_text.markdown(f'<div class="tf-stmt">{stmt["text"]}</div>', unsafe_allow_html=True)
             if t_sel and f_sel:
-                pick = None  # conflicting
+                pick = None
             elif t_sel:
                 pick = "True"
             elif f_sel:
@@ -417,24 +466,10 @@ def _render_typeX(q, key):
                 pick = None
             picks.append(pick)
 
-        if st.button("Check answer", key=f"{key}_check"):
-            correct = 0
-            for i, stmt in enumerate(stmts):
-                truth = "True" if stmt["answer"] else "False"
-                ok = picks[i] == truth
-                correct += int(ok)
-                icon = "✅" if ok else ("⬜" if picks[i] is None else "❌")
-                st.markdown(
-                    f"{icon} <strong>{stmt['text']}</strong> — "
-                    f"<em>{truth}</em>",
-                    unsafe_allow_html=True)
-                if stmt.get("explanation"):
-                    st.markdown(f'<div class="q-expl">{stmt["explanation"]}</div>',
-                                unsafe_allow_html=True)
-            st.info(f"Score: {correct}/{len(stmts)}")
-            if q.get("explanation") and q["explanation"] != "See individual statement explanations above.":
-                st.markdown(f'<div class="q-expl">{q["explanation"]}</div>',
-                            unsafe_allow_html=True)
+        if st.button("Submit Answer", key=f"{key}_check", type="primary", use_container_width=True):
+            st.session_state[answered_key] = True
+            st.session_state[f"{key}_picks"] = picks
+            correct = _show_tf_result(picks)
             return correct, len(stmts)
         return None
 
@@ -443,29 +478,40 @@ def _render_typeA(q, key):
     _inject_q_styles()
     is_sr = "statement-reason" in (q.get("tags") or [])
     type_label = "Statement &amp; Reason" if is_sr else "Single Best Answer"
-
     st.markdown(f'<div class="q-type-label">{type_label}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="q-stem">{q["stem"]}</div>', unsafe_allow_html=True)
 
-    # Strip "A. " prefixes from options for display, keep full for matching
     opts = q.get("options") or []
-    display_opts = [re.sub(r"^[A-Za-z][\.\)]\s*", "", o) for o in opts]
+    answered_key = f"{key}_answered"
+    correct_letter = str(q.get("answer")).strip().upper()
+
+    def _show_result(picked_letter):
+        for o in opts:
+            letter = _option_letter(o)
+            text = re.sub(r"^[A-Za-z][\.\)]\s*", "", o)
+            if letter == correct_letter:
+                state = "correct"
+            elif letter == picked_letter:
+                state = "wrong"
+            else:
+                state = "dim"
+            st.markdown(_opt_row_html(text, state), unsafe_allow_html=True)
+        _explanation_html(q.get("explanation"))
+
+    if st.session_state.get(answered_key):
+        _show_result(st.session_state.get(f"{key}_picked_letter"))
+        return None
 
     picked = st.radio("", opts, key=f"{key}_opt", index=None,
                       label_visibility="collapsed",
                       format_func=lambda o: re.sub(r"^[A-Za-z][\.\)]\s*", "", o))
 
-    if st.button("Check answer", key=f"{key}_check"):
-        ok = (_option_letter(picked) if picked else None) == str(q.get("answer")).strip().upper()
-        ans_text = next((re.sub(r"^[A-Za-z][\.\)]\s*", "", o) for o in opts
-                         if _option_letter(o) == str(q.get("answer")).strip().upper()), q.get("answer"))
-        st.markdown(
-            f"<span class='{'q-result-ok' if ok else 'q-result-bad'}'>"
-            f"{'✅ Correct' if ok else '❌ Incorrect'}</span> — <em>{ans_text}</em>",
-            unsafe_allow_html=True)
-        if q.get("explanation"):
-            st.markdown(f'<div class="q-expl">{q["explanation"]}</div>',
-                        unsafe_allow_html=True)
+    if st.button("Submit Answer", key=f"{key}_check", type="primary", use_container_width=True):
+        picked_letter = _option_letter(picked) if picked else None
+        st.session_state[answered_key] = True
+        st.session_state[f"{key}_picked_letter"] = picked_letter
+        ok = picked_letter == correct_letter
+        _show_result(picked_letter)
         return int(ok), 1
     return None
 
@@ -481,17 +527,30 @@ def _render_spot(q, key):
         else:
             st.warning(f"Image not found: {img}")
     st.markdown(f'<div class="q-stem">{q["stem"]}</div>', unsafe_allow_html=True)
-    typed = st.text_input("Your answer:", key=f"{key}_spot")
-    if st.button("Check answer", key=f"{key}_check"):
+
+    answered_key = f"{key}_answered"
+
+    def _show_result(typed):
         accepted = {_norm(a) for a in ([q.get("answer")] + (q.get("accepted_answers") or [])) if a}
         ok = _norm(typed) in accepted
         st.markdown(
             f"<span class='{'q-result-ok' if ok else 'q-result-bad'}'>"
             f"{'✅ Correct' if ok else '❌ Incorrect'}</span> — answer: <em>{q.get('answer')}</em>",
             unsafe_allow_html=True)
-        if q.get("explanation"):
-            st.markdown(f'<div class="q-expl">{q["explanation"]}</div>',
-                        unsafe_allow_html=True)
+        _explanation_html(q.get("explanation"))
+        return ok
+
+    if st.session_state.get(answered_key):
+        typed = st.session_state.get(f"{key}_typed", "")
+        st.text_input("Your answer:", value=typed, key=f"{key}_spot_ro", disabled=True)
+        _show_result(typed)
+        return None
+
+    typed = st.text_input("Your answer:", key=f"{key}_spot")
+    if st.button("Submit Answer", key=f"{key}_check", type="primary", use_container_width=True):
+        st.session_state[answered_key] = True
+        st.session_state[f"{key}_typed"] = typed
+        ok = _show_result(typed)
         return int(ok), 1
     return None
 
@@ -503,7 +562,7 @@ _RENDERERS = {"X": _render_typeX, "A": _render_typeA, "SPOT": _render_spot, "B":
 def _question_card(q, key_prefix, number):
     """Render one question; record the attempt if checked.
     PERF: this is its own fragment, so picking a radio option, ticking a T/F
-    checkbox, or clicking Check answer only reruns this one question — not
+    checkbox, or clicking Submit Answer only reruns this one question — not
     the rest of the page, the rest of GSSE, or the other 9 tabs in the app."""
     flag = "  ·  ⚑ *verify vs AU guidelines*" if q.get("needs_au_review") else ""
     st.markdown(f"**Q{number}**{flag}")
@@ -513,6 +572,7 @@ def _question_card(q, key_prefix, number):
         c, t = result
         _record_attempt(q.get("subtopic_id"), q.get("id", f"{key_prefix}-{number}"), c, t)
     st.divider()
+
 
 
 # ---------------------------------------------------------------------------
@@ -603,32 +663,93 @@ def _practice_view(qindex):
 # ---------------------------------------------------------------------------
 
 def _topics_view(qindex):
-    st.markdown("### Topics")
-    st.caption("Three components are passed independently — readiness is shown per component.")
+    # ── Header: title + search ──
+    hdr_l, hdr_r = st.columns([3, 2])
+    with hdr_l:
+        st.markdown("### Topics")
+        st.caption("Three components are passed independently — readiness is shown per component.")
+    with hdr_r:
+        search = st.text_input("Search for a module", key="_gsse_topic_search",
+                                placeholder="🔍  Search for a module",
+                                label_visibility="collapsed")
+    search_norm = _norm(search) if search else ""
 
-    cols = st.columns(3)
-    for col, sci in zip(cols, SCIENCE_ORDER):
-        r = _science_readiness(sci)
-        with col.container(border=True):
-            st.metric(GSSE_DOMAINS[sci]["name"], f"{round(r*100)}%")
-            st.progress(min(max(r, 0.0), 1.0))
+    # ── Overall summary strip ──
+    all_topics = [t for sci in SCIENCE_ORDER for t in topics_for_science(sci)]
+    total_topics = len(all_topics)
+    mastered = sum(1 for t in all_topics if _topic_completion(t) >= 0.8)
+    total_q = sum(len(qindex.get(s["id"], [])) for t in all_topics for s in t["subtopics"])
+    events = _events()
+    answered = len(events)
+    correct = sum(1 for e in events if e.get("correct") == e.get("total") and e.get("total"))
+    overall_pct = round((sum(e["correct"] for e in events) / sum(e["total"] for e in events)) * 100, 1) \
+        if sum(e["total"] for e in events) else 0.0
 
-    st.write("")
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#5B62F2,#7A80F7); border-radius:16px;
+                padding:22px 26px; color:#FFFFFF; margin-bottom:20px;">
+      <div style="font-size:0.8rem; opacity:0.85; text-transform:uppercase; letter-spacing:0.08em;">Overall Mastery</div>
+      <div style="font-size:2.4rem; font-weight:800; margin:4px 0 14px;">{overall_pct}%</div>
+      <div style="display:flex; gap:32px; flex-wrap:wrap;">
+        <div><div style="font-size:1.2rem; font-weight:700;">{mastered} / {total_topics}</div>
+             <div style="font-size:0.75rem; opacity:0.85;">Modules Mastered</div></div>
+        <div><div style="font-size:1.2rem; font-weight:700;">{answered} / {total_q}</div>
+             <div style="font-size:0.75rem; opacity:0.85;">Questions Answered</div></div>
+        <div><div style="font-size:1.2rem; font-weight:700;">{correct}</div>
+             <div style="font-size:0.75rem; opacity:0.85;">Fully Correct</div></div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Module cards, grouped by science ──
+    SCI_COLOR = {
+        "ANATOMY":    ("#EEF0FE", "#5B62F2"),
+        "PHYSIOLOGY": ("#EAF7EE", "#2E9E58"),
+        "PATHOLOGY":  ("#FDEFEA", "#E07A3F"),
+    }
     for sci in SCIENCE_ORDER:
+        topics = topics_for_science(sci)
+        if search_norm:
+            topics = [t for t in topics if search_norm in _norm(t["name"])]
+        if not topics:
+            continue
+        bg, fg = SCI_COLOR.get(sci, ("#EEF0FE", "#5B62F2"))
         st.markdown(f"#### {GSSE_DOMAINS[sci]['name']}")
-        for t in topics_for_science(sci):
+        cols = st.columns(3)
+        for i, t in enumerate(topics):
             n_q = sum(len(qindex.get(s["id"], [])) for s in t["subtopics"])
+            n_answered = sum(len(_sub_progress(s["id"])["attempts"]) for s in t["subtopics"])
             comp = _topic_completion(t)
-            c1, c2, c3 = st.columns([6, 2, 1.4])
             stub = " · stub" if t.get("racs_completeness_stub") else ""
-            c1.markdown(f"{t['icon']} **{t['name']}**  \n"
-                        f"<span style='color:gray;font-size:0.85em'>"
-                        f"{len(t['subtopics'])} subtopics · {n_q} questions{stub}</span>",
-                        unsafe_allow_html=True)
-            c2.progress(min(max(comp, 0.0), 1.0))
-            if c3.button("Open", key=f"open_{t['id']}"):
-                _go("subtopics", topic_id=t["id"])
+            with cols[i % 3]:
+                with st.container(border=True):
+                    st.markdown(f"""
+                    <div style="background:{bg}; border-radius:10px; padding:14px 16px; margin-bottom:10px;">
+                      <span style="font-size:1.6rem;">{t['icon']}</span>
+                    </div>
+                    <div style="font-weight:700; font-size:1.02rem; margin-bottom:2px;">{t['name']}</div>
+                    <div style="color:#6B7290; font-size:0.8rem; margin-bottom:10px;">
+                      Mastery&nbsp;&nbsp;<span style="color:{fg}; font-weight:700;">{round(comp*100)}%</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.progress(min(max(comp, 0.0), 1.0))
+                    st.markdown(f"""
+                    <div style="display:flex; justify-content:space-between; color:#6B7290;
+                                font-size:0.78rem; margin:8px 0 4px;">
+                      <span>❓ {n_answered} / {n_q}</span>
+                      <span>✅ {n_answered} / {n_q}</span>
+                      <span>🗂️ {len(t['subtopics'])} sub{stub}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button("Focused learning  →", key=f"open_{t['id']}", use_container_width=True):
+                        _go("subtopics", topic_id=t["id"])
         st.write("")
+
+    if search_norm and not any(
+        _norm(t["name"]).find(search_norm) >= 0 for t in all_topics
+    ):
+        st.info(f"No modules match “{search}”.")
+
 
 
 def _subtopics_view(qindex):
@@ -643,30 +764,107 @@ def _subtopics_view(qindex):
     if topic.get("note"):
         st.caption(topic["note"])
 
+    # ── Controls: search / sort / type filter ──
+    all_types_present = sorted({
+        q.get("type") for s in topic["subtopics"] for q in qindex.get(s["id"], [])
+    } - {None})
+    type_options = [TYPE_LABEL.get(t, t) for t in all_types_present]
+
+    c_search, c_sort, c_filter = st.columns([2.2, 1.4, 2])
+    with c_search:
+        search = st.text_input("Search topics", key=f"_gsse_sub_search_{topic['id']}",
+                                placeholder="🔍  Search subtopics",
+                                label_visibility="collapsed")
+    with c_sort:
+        sort_by = st.selectbox("Sort by", ["Order", "Name (A–Z)", "Progress", "% Correct"],
+                                key=f"_gsse_sub_sort_{topic['id']}", label_visibility="collapsed")
+    with c_filter:
+        type_filter = st.multiselect("Question type", type_options,
+                                      key=f"_gsse_sub_typefilter_{topic['id']}",
+                                      placeholder="Filter by question type",
+                                      label_visibility="collapsed")
+
+    search_norm = _norm(search) if search else ""
+
+    # ── Build rows ──
+    rows = []
     for section, subs in sections_of(topic["id"]).items():
-        if topic["sections"] != ["General"]:
-            st.markdown(f"**{section}**")
         for s in subs:
+            qs = qindex.get(s["id"], [])
+            n_q = len(qs)
             sp = _sub_progress(s["id"])
-            n_q = len(qindex.get(s["id"], []))
+            n_answered = len(sp["attempts"])
             acc = _subtopic_accuracy(s["id"])
-            c1, c2, c3, c4 = st.columns([5, 2, 2, 1.4])
-            c1.write(f"{s['code']}. {s['name']}")
-            new_plan = c2.selectbox("plan", PLAN_OPTIONS, index=PLAN_OPTIONS.index(sp["plan"]),
-                                    key=f"plan_{s['id']}", label_visibility="collapsed")
-            if new_plan != sp["plan"]:
-                sp["plan"] = new_plan
-                _mark_dirty()
-            label = (f"{round(acc*100)}% · {n_q} q" if acc is not None
-                     else (f"{n_q} q" if n_q else "no q yet"))
-            c3.markdown(f"<span style='color:gray'>{label}</span>", unsafe_allow_html=True)
+            types_here = sorted({TYPE_LABEL.get(q.get("type"), q.get("type")) for q in qs} - {None})
+            rows.append({
+                "section": section, "sub": s, "n_q": n_q,
+                "n_answered": n_answered, "acc": acc, "types": types_here,
+            })
+
+    if search_norm:
+        rows = [r for r in rows if search_norm in _norm(r["sub"]["name"])]
+    if type_filter:
+        rows = [r for r in rows if set(type_filter) & set(r["types"])]
+
+    if sort_by == "Name (A–Z)":
+        rows.sort(key=lambda r: r["sub"]["name"])
+    elif sort_by == "Progress":
+        rows.sort(key=lambda r: (r["n_answered"] / r["n_q"]) if r["n_q"] else 0, reverse=True)
+    elif sort_by == "% Correct":
+        rows.sort(key=lambda r: (r["acc"] if r["acc"] is not None else -1), reverse=True)
+
+    if not rows:
+        st.info("No subtopics match your search/filter.")
+        return
+
+    # ── Table header ──
+    h = st.columns([4, 2, 1.6, 2.2, 1.4])
+    h[0].markdown("**Topic**")
+    h[1].markdown("**Progress**")
+    h[2].markdown("**% Correct**")
+    h[3].markdown("**Question Type**")
+    h[4].markdown("**Start**")
+    st.markdown('<hr style="margin:4px 0 8px;">', unsafe_allow_html=True)
+
+    last_section = None
+    for r in rows:
+        s, n_q, n_answered, acc, types_here = r["sub"], r["n_q"], r["n_answered"], r["acc"], r["types"]
+        if topic["sections"] != ["General"] and r["section"] != last_section:
+            st.markdown(f"**{r['section']}**")
+            last_section = r["section"]
+
+        c1, c2, c3, c4, c5 = st.columns([4, 2, 1.6, 2.2, 1.4])
+        c1.write(f"{s['code']}. {s['name']}")
+
+        with c2:
+            st.progress(min(n_answered / n_q, 1.0) if n_q else 0.0,
+                        text=f"{n_answered}/{n_q}" if n_q else "no questions")
+
+        with c3:
+            if acc is None:
+                c3.markdown("<span style='color:#6B7290;'>—</span>", unsafe_allow_html=True)
+            else:
+                pct = round(acc * 100)
+                color = "#4CAF6D" if pct >= 80 else ("#B8860B" if pct >= 50 else "#E5534B")
+                c3.markdown(f"<span style='color:{color}; font-weight:700;'>{pct}%</span>",
+                            unsafe_allow_html=True)
+
+        with c4:
+            pills = "".join(
+                f'<span class="tag-pill" style="font-size:0.72rem; padding:3px 10px; margin-right:4px;">{t}</span>'
+                for t in types_here
+            ) or "<span style='color:#6B7290;'>—</span>"
+            c4.markdown(pills, unsafe_allow_html=True)
+
+        with c5:
             if n_q:
-                if c4.button("Study", key=f"study_{s['id']}"):
+                label = "Resume" if n_answered else "Start"
+                if c5.button(label, key=f"study_{s['id']}", use_container_width=True):
                     _go("study", subtopic_id=s["id"])
             else:
-                c4.markdown("<span style='color:gray;font-size:0.85em'>—</span>",
+                c5.markdown("<span style='color:#6B7290; font-size:0.85em;'>—</span>",
                             unsafe_allow_html=True)
-        st.write("")
+
 
 
 def _study_view(qindex):
@@ -675,18 +873,105 @@ def _study_view(qindex):
     if sub is None:
         _go("topics"); return
 
-    top = st.columns([6, 2])
-    top[0].markdown(f"### {topic['icon']} {topic['name']} — {sub['name']}")
-    if top[1].button("← Back"):
-        _go("subtopics", topic_id=topic["id"])
-
     qs = qindex.get(sid, [])
     if not qs:
         st.info("No questions in this subtopic yet.")
         return
-    st.caption(f"{len(qs)} question(s) · {GSSE_DOMAINS[science_of_subtopic(sid)]['name']} component")
-    for n, q in enumerate(qs, 1):
-        _question_card(q, key_prefix="study", number=n)
+
+    # Reset the pointer whenever we land on a new subtopic
+    if st.session_state.get("_gsse_qidx_subtopic") != sid:
+        st.session_state["_gsse_qidx"] = 0
+        st.session_state["_gsse_qidx_subtopic"] = sid
+    idx = max(0, min(st.session_state.get("_gsse_qidx", 0), len(qs) - 1))
+    st.session_state["_gsse_qidx"] = idx
+    q = qs[idx]
+    qid = q.get("id", f"study-{idx}")
+
+    flagged = st.session_state.setdefault(f"_gsse_flagged_{sid}", set())
+    sp = _sub_progress(sid)
+    attempts = sp["attempts"]
+
+    main_col, side_col = st.columns([3, 1], gap="large")
+
+    with main_col:
+        top = st.columns([1, 5, 2.2])
+        if top[0].button("←", key="study_back", help="Back to topic"):
+            _go("subtopics", topic_id=topic["id"])
+        top[1].markdown(f"### {topic['icon']} {sub['name']}")
+        is_flagged = qid in flagged
+        if top[2].button("🚩 Flagged" if is_flagged else "⚑ Flag for review",
+                          key=f"flag_{sid}_{qid}", use_container_width=True):
+            flagged.symmetric_difference_update({qid})
+            st.rerun()
+
+        with st.container(border=True):
+            renderer = _RENDERERS.get(q.get("type"), _render_typeA)
+            result = renderer(q, key=f"study_{sid}_{qid}")
+            if result is not None:
+                c, t = result
+                _record_attempt(sid, qid, c, t)
+
+        st.write("")
+        nav = st.columns([1, 1, 3, 1, 1])
+        if nav[0].button("⟵ Prev", disabled=(idx == 0), use_container_width=True):
+            st.session_state["_gsse_qidx"] = idx - 1
+            st.rerun()
+        nav[2].markdown(f"<div style='text-align:center;color:#6B7290;font-size:0.85rem;padding-top:8px;'>"
+                         f"Question {idx + 1} of {len(qs)}</div>", unsafe_allow_html=True)
+        if nav[4].button("Next ⟶", disabled=(idx == len(qs) - 1), use_container_width=True):
+            st.session_state["_gsse_qidx"] = idx + 1
+            st.rerun()
+
+    with side_col:
+        answered = [(q2.get("id", f"study-{i}"), attempts.get(q2.get("id", f"study-{i}")))
+                    for i, q2 in enumerate(qs)]
+        answered = [(qid2, a) for qid2, a in answered if a is not None]
+        n_correct = sum(1 for _, a in answered if a["correct"] == a["total"])
+        n_incorrect = len(answered) - n_correct
+        acc = round(n_correct / len(answered) * 100) if answered else 0
+
+        st.markdown(f"""
+        <div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:14px;padding:18px 20px;">
+          <div style="font-weight:700;color:#5B62F2;margin-bottom:12px;">Quiz Progress</div>
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#6B7290;margin-bottom:6px;">
+            <span>Question:</span><strong style="color:#1E2233;">{idx + 1} / {len(qs)}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#6B7290;margin-bottom:6px;">
+            <span>Correct:</span><strong style="color:#4CAF6D;">{n_correct}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#6B7290;margin-bottom:6px;">
+            <span>Incorrect:</span><strong style="color:#E5534B;">{n_incorrect}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#6B7290;">
+            <span>Accuracy:</span><strong style="color:#1E2233;">{acc}%</strong>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div style="font-weight:700;color:#5B62F2;margin:18px 0 8px;">Question Map</div>',
+                     unsafe_allow_html=True)
+        n_cols = 5
+        for row_start in range(0, len(qs), n_cols):
+            row_qs = qs[row_start:row_start + n_cols]
+            mcols = st.columns(n_cols)
+            for j, q2 in enumerate(row_qs):
+                i2 = row_start + j
+                qid2 = q2.get("id", f"study-{i2}")
+                a2 = attempts.get(qid2)
+                if a2 is not None:
+                    status = "✓" if a2["correct"] == a2["total"] else "✕"
+                elif qid2 in flagged:
+                    status = "🚩"
+                else:
+                    status = ""
+                label = f"{status}{i2 + 1}" if status else str(i2 + 1)
+                if mcols[j].button(label, key=f"map_{sid}_{i2}", use_container_width=True,
+                                   type="primary" if i2 == idx else "secondary"):
+                    st.session_state["_gsse_qidx"] = i2
+                    st.rerun()
+
+        st.caption("✓ correct · ✕ incorrect · 🚩 flagged")
+
 
 
 # ---------------------------------------------------------------------------
