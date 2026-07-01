@@ -592,10 +592,10 @@ def _topics_view(content):
         sort_by = st.selectbox("Sort by", ["Order", "Name (A–Z)", "Progress", "% Correct"],
                                 key=f"_uq_topic_sort_{active_section or 'all'}", label_visibility="collapsed")
     with c_filter:
-        type_filter = st.multiselect("Question type", ["MCQ only", "MCQ + Viva", "Viva only"],
-                                      key=f"_uq_topic_typefilter_{active_section or 'all'}",
-                                      placeholder="Filter by question type",
-                                      label_visibility="collapsed")
+        type_pick = st.selectbox("Question type",
+                                  ["All question types", "MCQ only", "MCQ + Viva", "Viva only"],
+                                  key=f"_uq_topic_typefilter_{active_section or 'all'}",
+                                  label_visibility="collapsed")
     search_norm = search.strip().lower() if search else ""
 
     # ── Build rows ──
@@ -612,8 +612,8 @@ def _topics_view(content):
 
     if search_norm:
         rows = [r for r in rows if search_norm in r["topic"]["name"].lower()]
-    if type_filter:
-        rows = [r for r in rows if r["kind"] in type_filter]
+    if type_pick != "All question types":
+        rows = [r for r in rows if r["kind"] == type_pick]
 
     if sort_by == "Name (A–Z)":
         rows.sort(key=lambda r: r["topic"]["name"])
