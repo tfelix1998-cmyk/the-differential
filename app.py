@@ -117,8 +117,8 @@ p, span, label, div { color: #1E2233; }
 .stTabs [aria-selected="true"] { color: #5B62F2 !important; border-bottom: 2px solid #5B62F2 !important; }
 
 /* Progress bar */
-.stProgress > div > div { background: #5B62F2 !important; }
-.stProgress { background: #E2E6F5 !important; border-radius: 8px; }
+.stProgress > div > div > div { background: #E2E6F5 !important; border-radius: 8px; }
+.stProgress > div > div > div > div { background: #5B62F2 !important; border-radius: 8px; }
 
 /* Text inputs */
 .stTextArea textarea, .stTextInput input {
