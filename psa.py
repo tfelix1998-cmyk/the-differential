@@ -8,7 +8,7 @@
 #      with tab_psa:
 #          render_psa(c, conn, SUPABASE_ENABLED, supabase)
 #
-#  It reuses the app's existing theme (gold #C9A84C on dark) and logs attempts to
+#  It reuses the app's existing theme (gold #5B62F2 on dark) and logs attempts to
 #  a `psa_attempts` table (created here, idempotent) plus Supabase if enabled.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -167,7 +167,7 @@ def _log(c, conn, SUPABASE_ENABLED, supabase, item, marks, max_marks, user):
 
 
 # ── Small UI helpers ──────────────────────────────────────────────────────────
-GOLD, CARD, BORDER, TXT, MUTE = "#C9A84C", "#1E1B16", "#2E2A22", "#FAFAF8", "#8A8070"
+GOLD, CARD, BORDER, TXT, MUTE = "#5B62F2", "#FFFFFF", "#E2E6F5", "#1E2233", "#6B7290"
 
 
 def _label(text):
@@ -184,11 +184,11 @@ def _stem_card(item):
     age = item.get("age", "")
     who = f"{age}-year-old {sex}" if age != "" else sex
     chips = (
-        f'<span style="background:#252015;color:{GOLD};padding:3px 10px;border-radius:20px;'
+        f'<span style="background:#EEF0FE;color:{GOLD};padding:3px 10px;border-radius:20px;'
         f'font-size:0.72rem;font-weight:700;">{m["icon"]} {m["name"]}</span>'
-        f'<span style="background:#252015;color:{MUTE};padding:3px 10px;border-radius:20px;'
+        f'<span style="background:#EEF0FE;color:{MUTE};padding:3px 10px;border-radius:20px;'
         f'font-size:0.72rem;font-weight:600;">{SETTING_NAMES.get(item.get("setting",""), item.get("setting",""))}</span>'
-        f'<span style="background:#252015;color:{MUTE};padding:3px 10px;border-radius:20px;'
+        f'<span style="background:#EEF0FE;color:{MUTE};padding:3px 10px;border-radius:20px;'
         f'font-size:0.72rem;font-weight:600;">{item.get("diagnosis","")}</span>'
     )
     blocks = ""
@@ -213,7 +213,7 @@ def _stem_card(item):
 def _lead_in_box(text):
     safe = text.replace("\n", "<br>")
     st.markdown(
-        f'<div style="background:#1E1A10;border:1.5px solid {GOLD};border-radius:10px;'
+        f'<div style="background:#EEF0FE;border:1.5px solid {GOLD};border-radius:10px;'
         f'padding:14px 18px;margin:0 0 16px 0;color:{GOLD};font-weight:600;'
         f'font-size:0.97rem;line-height:1.6;">{safe}</div>',
         unsafe_allow_html=True)
@@ -222,11 +222,11 @@ def _lead_in_box(text):
 def _result_banner(marks, max_marks):
     pct = (marks / max_marks * 100) if max_marks else 0
     if pct >= 99:
-        bg, bd, col, icon = "#1A3020", "#4CAF50", "#81C784", "✓"
+        bg, bd, col, icon = "#EAF7EE", "#4CAF6D", "#2E9E58", "✓"
     elif pct > 0:
-        bg, bd, col, icon = "#1E1A10", GOLD, GOLD, "◑"
+        bg, bd, col, icon = "#EEF0FE", GOLD, GOLD, "◑"
     else:
-        bg, bd, col, icon = "#2A1010", "#EF5350", "#EF5350", "✗"
+        bg, bd, col, icon = "#FCEDEC", "#E5534B", "#E5534B", "✗"
     st.markdown(
         f'<div style="background:{bg};border:1.5px solid {bd};border-radius:12px;'
         f'padding:12px 18px;margin:14px 0;color:{col};font-weight:700;font-size:1rem;">'
@@ -261,9 +261,9 @@ def _render_sba(item, kp):
     chosen = st.session_state[sub_key]
     for i, opt in enumerate(options):
         if i == correct:
-            bg, bd, icon = "#1A3020", "#4CAF50", "✓"
+            bg, bd, icon = "#EAF7EE", "#4CAF6D", "✓"
         elif i == chosen:
-            bg, bd, icon = "#2A1010", "#EF5350", "✗"
+            bg, bd, icon = "#FCEDEC", "#E5534B", "✗"
         else:
             bg, bd, icon = CARD, BORDER, chr(65 + i)
         just = ""
@@ -340,7 +340,7 @@ def _render_rev(item, kp):
     st.markdown(
         f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:10px;'
         f'overflow:hidden;margin-bottom:14px;"><table style="width:100%;border-collapse:collapse;'
-        f'font-size:0.9rem;"><thead><tr style="background:#252015;">'
+        f'font-size:0.9rem;"><thead><tr style="background:#EEF0FE;">'
         f'<th style="padding:8px 10px;text-align:left;color:{GOLD};">Medicine</th>'
         f'<th style="padding:8px 10px;text-align:left;color:{GOLD};">Dose</th>'
         f'<th style="padding:8px 10px;text-align:left;color:{GOLD};">Route</th>'
@@ -386,7 +386,7 @@ def _render_rev(item, kp):
     ):
         chosen = ", ".join(names[i] for i in sel) or "— nothing selected —"
         answer = ", ".join(names[i] for i in q["correct"])
-        col = "#81C784" if sc == 2 else (GOLD if sc == 1 else "#EF5350")
+        col = "#2E9E58" if sc == 2 else (GOLD if sc == 1 else "#E5534B")
         st.markdown(
             f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:10px;'
             f'padding:12px 16px;margin:8px 0;">'
@@ -473,7 +473,7 @@ def _render_pws(item, kp):
                                 key=f"{kp}_dosemark", label_visibility="collapsed")
 
     st.markdown(
-        f'<div style="background:#1E1A10;border:1px solid {GOLD};border-radius:10px;'
+        f'<div style="background:#EEF0FE;border:1px solid {GOLD};border-radius:10px;'
         f'padding:12px 16px;margin:10px 0;">'
         f'<p style="margin:0;color:{GOLD};font-weight:700;">Model answer</p>'
         f'<p style="margin:4px 0 0 0;color:{TXT};">{item.get("model_answer","")}'
@@ -532,113 +532,188 @@ def _run_section(style, c, conn, SUPABASE_ENABLED, supabase, user):
                 f'under "{style}" and they will appear here.')
         return
 
-    # Item navigator
-    nav, main = st.columns([1, 6])
-    with nav:
-        _label("Items")
-        for i in range(len(items)):
-            done = items[i]["id"] in results
-            mark = "✓" if done else " "
-            cur = "▸" if i == idx else mark
-            if st.button(f"{cur} {i+1}", key=f"psa_{style}_nav_{i}", use_container_width=True):
-                st.session_state[idx_key] = i
-                st.rerun()
+    idx = max(0, min(idx, len(items) - 1))
+    st.session_state[idx_key] = idx
 
-    with main:
+    main_col, side_col = st.columns([3, 1], gap="large")
+
+    with main_col:
         item = items[idx]
         kp = f"psa_{style}_{idx}"
 
         @st.fragment
-        def _item_panel(item, kp, idx, total, results, res_key):
+        def _item_panel(item, kp, results, res_key):
             """PERF: own fragment — submitting an answer (radio pick, number
             entry, matching, or the PWS record-mark flow) only reruns this
-            panel, not the whole 10-tab app. Previous/Next stay a full
-            st.rerun() (default, even inside a fragment) so the item
-            navigator in the nav column stays in sync."""
-            pct = ((idx + 1) / total) * 100
-            st.markdown(
-                f'<div style="display:flex;justify-content:space-between;align-items:center;'
-                f'background:{CARD};border:1px solid {BORDER};border-radius:12px;'
-                f'padding:12px 18px;margin-bottom:14px;">'
-                f'<span style="font-weight:700;color:{GOLD};">Item {idx+1} / {total}</span>'
-                f'<div style="flex:1;margin:0 18px;background:{BORDER};border-radius:4px;height:6px;">'
-                f'<div style="width:{pct:.0f}%;background:{GOLD};height:6px;border-radius:4px;"></div></div>'
-                f'<span style="color:{MUTE};font-weight:600;">{item["id"]}</span></div>',
-                unsafe_allow_html=True)
-
+            panel, not the whole 10-tab app."""
             outcome = _render_item(item, kp)
             if outcome is not None and item["id"] not in results:
                 marks, maxm = outcome
                 results[item["id"]] = {"marks": marks, "max": maxm}
                 _log(c, conn, SUPABASE_ENABLED, supabase, item, marks, maxm, user)
 
-            st.markdown("---")
-            cprev, cnext = st.columns(2)
-            with cprev:
-                if idx > 0 and st.button("← Previous", key=f"psa_{style}_prev", use_container_width=True):
-                    st.session_state[idx_key] = idx - 1
-                    st.rerun()
-            with cnext:
-                if idx < total - 1 and st.button("Next →", key=f"psa_{style}_next",
-                                                  type="primary", use_container_width=True):
-                    st.session_state[idx_key] = idx + 1
-                    st.rerun()
+        _item_panel(item, kp, results, res_key)
 
-        _item_panel(item, kp, idx, len(items), results, res_key)
+        st.write("")
+        nav = st.columns([1, 1, 3, 1, 1])
+        if nav[0].button("⟵ Prev", disabled=(idx == 0), use_container_width=True, key=f"psa_{style}_prev"):
+            st.session_state[idx_key] = idx - 1
+            st.rerun()
+        nav[2].markdown(f"<div style='text-align:center;color:#6B7290;font-size:0.85rem;padding-top:8px;'>"
+                         f"Item {idx + 1} of {len(items)}</div>", unsafe_allow_html=True)
+        if nav[4].button("Next ⟶", disabled=(idx == len(items) - 1), use_container_width=True,
+                          type="primary", key=f"psa_{style}_next"):
+            st.session_state[idx_key] = idx + 1
+            st.rerun()
 
-    # Section running total
-    if results:
+    with side_col:
+        n_answered = len(results)
         got = sum(r["marks"] for r in results.values())
         poss = sum(r["max"] for r in results.values())
-        pct = (got / poss * 100) if poss else 0
-        st.markdown(
-            f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:12px;'
-            f'padding:14px 20px;margin-top:14px;display:flex;gap:24px;">'
-            f'<span style="color:{MUTE};">Answered <b style="color:{TXT};">{len(results)}/{len(items)}</b></span>'
-            f'<span style="color:{MUTE};">Marks <b style="color:{GOLD};">{got:g}/{poss:g}</b></span>'
-            f'<span style="color:{MUTE};">Score <b style="color:{GOLD};">{pct:.0f}%</b></span></div>',
-            unsafe_allow_html=True)
+        pct = round(got / poss * 100) if poss else 0
+
+        st.markdown(f"""
+        <div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:14px;padding:18px 20px;">
+          <div style="font-weight:700;color:#5B62F2;margin-bottom:12px;">Quiz Progress</div>
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#6B7290;margin-bottom:6px;">
+            <span>Item:</span><strong style="color:#1E2233;">{idx + 1} / {len(items)}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#6B7290;margin-bottom:6px;">
+            <span>Answered:</span><strong style="color:#1E2233;">{n_answered} / {len(items)}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#6B7290;margin-bottom:6px;">
+            <span>Marks:</span><strong style="color:#4CAF6D;">{got:g} / {poss:g}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#6B7290;">
+            <span>Score:</span><strong style="color:#1E2233;">{pct}%</strong>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div style="font-weight:700;color:#5B62F2;margin:18px 0 8px;">Item Map</div>',
+                     unsafe_allow_html=True)
+        n_cols = 5
+        for row_start in range(0, len(items), n_cols):
+            row = list(range(row_start, min(row_start + n_cols, len(items))))
+            mcols = st.columns(n_cols)
+            for j, i2 in enumerate(row):
+                res2 = results.get(items[i2]["id"])
+                if res2 is not None:
+                    status = "✓" if res2["marks"] >= res2["max"] else ("◑" if res2["marks"] > 0 else "✕")
+                else:
+                    status = ""
+                label = f"{status}{i2 + 1}" if status else str(i2 + 1)
+                if mcols[j].button(label, key=f"psa_map_{style}_{i2}", use_container_width=True,
+                                   type="primary" if i2 == idx else "secondary"):
+                    st.session_state[idx_key] = i2
+                    st.rerun()
+
+        st.caption("✓ full marks · ◑ partial · ✕ no marks")
+
+def _style_stats(c, user):
+    """Per-style lifetime stats from the DB: distinct items answered + total marks."""
+    stats = {}
+    try:
+        rows = c.execute(
+            "SELECT style, COUNT(DISTINCT item_id), COALESCE(SUM(marks),0), COALESCE(SUM(max_marks),0) "
+            "FROM psa_attempts WHERE user=? GROUP BY style", (user,)
+        ).fetchall()
+        for style, n, got, poss in rows:
+            stats[style] = {"answered": n, "got": got, "poss": poss}
+    except Exception:
+        pass
+    return stats
 
 
 # ── Landing page ──────────────────────────────────────────────────────────────
 def _landing(c, conn, user):
     st.markdown("### 💊 Prescribing Safety Assessment")
-    st.markdown(
-        f'<p style="color:{MUTE};margin-top:-6px;">8 item styles · 200 marks · 120 minutes. '
-        f'Choose a section to practise.</p>', unsafe_allow_html=True)
+    st.caption("8 item styles · 200 marks · 120 minutes. Choose a section to practise.")
 
-    # lifetime stats from DB
-    try:
-        total = c.execute("SELECT COUNT(*) FROM psa_attempts WHERE user=?", (user,)).fetchone()[0]
-        got = c.execute("SELECT COALESCE(SUM(marks),0) FROM psa_attempts WHERE user=?", (user,)).fetchone()[0]
-        poss = c.execute("SELECT COALESCE(SUM(max_marks),0) FROM psa_attempts WHERE user=?", (user,)).fetchone()[0]
-    except Exception:
-        total, got, poss = 0, 0, 0
-    acc = (got / poss * 100) if poss else 0
-    a, b, d = st.columns(3)
-    a.metric("Items attempted", total)
-    b.metric("Marks earned", f"{got:g}/{poss:g}")
-    d.metric("Overall score", f"{acc:.0f}%")
+    stats = _style_stats(c, user)
+    total_answered = sum(s["answered"] for s in stats.values())
+    total_got = sum(s["got"] for s in stats.values())
+    total_poss = sum(s["poss"] for s in stats.values())
+    overall_pct = round((total_got / total_poss) * 100, 1) if total_poss else 0.0
+    total_items = sum(len(PSA_QUESTIONS.get(style, [])) for style in STYLE_ORDER)
 
-    st.markdown("####")
-    cols = st.columns(4)
-    for i, style in enumerate(STYLE_ORDER):
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#5B62F2,#7A80F7); border-radius:16px;
+                padding:22px 26px; color:#FFFFFF; margin-bottom:20px;">
+      <div style="font-size:0.8rem; opacity:0.85; text-transform:uppercase; letter-spacing:0.08em;">Overall Score</div>
+      <div style="font-size:2.4rem; font-weight:800; margin:4px 0 14px;">{overall_pct}%</div>
+      <div style="display:flex; gap:32px; flex-wrap:wrap;">
+        <div><div style="font-size:1.2rem; font-weight:700;">{total_answered} / {total_items}</div>
+             <div style="font-size:0.75rem; opacity:0.85;">Items Attempted</div></div>
+        <div><div style="font-size:1.2rem; font-weight:700;">{total_got:g} / {total_poss:g}</div>
+             <div style="font-size:0.75rem; opacity:0.85;">Marks Earned</div></div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    c_search, c_sort = st.columns([2.4, 1.4])
+    with c_search:
+        search = st.text_input("Search sections", key="psa_landing_search",
+                                placeholder="🔍  Search sections", label_visibility="collapsed")
+    with c_sort:
+        sort_by = st.selectbox("Sort by", ["Order", "Name (A–Z)", "Progress", "% Correct"],
+                                key="psa_landing_sort", label_visibility="collapsed")
+    search_norm = search.strip().lower() if search else ""
+
+    rows = []
+    for style in STYLE_ORDER:
         meta = STYLE_META[style]
         n = len(PSA_QUESTIONS.get(style, []))
-        with cols[i % 4]:
-            st.markdown(
-                f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:12px;'
-                f'padding:16px;margin-bottom:10px;min-height:118px;">'
-                f'<div style="font-size:1.4rem;">{meta["icon"]}</div>'
-                f'<p style="margin:6px 0 2px 0;font-weight:700;color:{TXT};font-size:0.95rem;">{meta["name"]}</p>'
-                f'<p style="margin:0;color:{MUTE};font-size:0.78rem;">{meta["max"]} marks · {n} item{"s" if n!=1 else ""}</p>'
-                f'</div>', unsafe_allow_html=True)
-            if st.button("Practise", key=f"psa_open_{style}", use_container_width=True,
-                         disabled=(n == 0)):
-                st.session_state["psa_section"] = style
-                st.session_state[f"psa_{style}_idx"] = 0
-                st.rerun()
+        s = stats.get(style, {"answered": 0, "got": 0, "poss": 0})
+        pct = (s["got"] / s["poss"] * 100) if s["poss"] else None
+        rows.append({"style": style, "meta": meta, "n": n, "answered": s["answered"], "pct": pct})
 
+    if search_norm:
+        rows = [r for r in rows if search_norm in r["meta"]["name"].lower()]
+    if sort_by == "Name (A–Z)":
+        rows.sort(key=lambda r: r["meta"]["name"])
+    elif sort_by == "Progress":
+        rows.sort(key=lambda r: (r["answered"] / r["n"]) if r["n"] else 0, reverse=True)
+    elif sort_by == "% Correct":
+        rows.sort(key=lambda r: (r["pct"] if r["pct"] is not None else -1), reverse=True)
+
+    if not rows:
+        st.info("No sections match your search.")
+        return
+
+    h = st.columns([3.4, 2, 1.6, 1.6, 1.4])
+    h[0].markdown("**Section**")
+    h[1].markdown("**Progress**")
+    h[2].markdown("**% Correct**")
+    h[3].markdown("**Marks**")
+    h[4].markdown("**Start**")
+    st.markdown('<hr style="margin:4px 0 8px;">', unsafe_allow_html=True)
+
+    for r in rows:
+        style, meta, n, answered, pct = r["style"], r["meta"], r["n"], r["answered"], r["pct"]
+        c1, c2, c3, c4, c5 = st.columns([3.4, 2, 1.6, 1.6, 1.4])
+        c1.write(f"{meta['icon']} {meta['name']}")
+        with c2:
+            st.progress(min(answered / n, 1.0) if n else 0.0,
+                        text=f"{answered}/{n}" if n else "no items")
+        with c3:
+            if pct is None:
+                c3.markdown("<span style='color:#6B7290;'>—</span>", unsafe_allow_html=True)
+            else:
+                pctr = round(pct)
+                color = "#4CAF6D" if pctr >= 80 else ("#B8860B" if pctr >= 50 else "#E5534B")
+                c3.markdown(f"<span style='color:{color}; font-weight:700;'>{pctr}%</span>",
+                            unsafe_allow_html=True)
+        c4.write(f"{meta['max']} / item")
+        with c5:
+            if n:
+                label = "Resume" if answered else "Start"
+                if c5.button(label, key=f"psa_open_{style}", use_container_width=True):
+                    st.session_state["psa_section"] = style
+                    st.session_state[f"psa_{style}_idx"] = 0
+                    st.rerun()
+            else:
+                c5.markdown("<span style='color:#6B7290; font-size:0.85em;'>—</span>", unsafe_allow_html=True)
 
 # ── Public entry point ────────────────────────────────────────────────────────
 def render_psa(c, conn, SUPABASE_ENABLED=False, supabase=None):
