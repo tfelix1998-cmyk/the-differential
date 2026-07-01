@@ -769,6 +769,9 @@ def _subtopics_view(qindex):
         q.get("type") for s in topic["subtopics"] for q in qindex.get(s["id"], [])
     } - {None})
     type_options = [TYPE_LABEL.get(t, t) for t in all_types_present]
+    filter_choices = ["All question types"] + type_options
+    if len(type_options) > 1:
+        filter_choices.append("Mixed (2+ types)")
 
     c_search, c_sort, c_filter = st.columns([2.2, 1.4, 2])
     with c_search:
@@ -779,10 +782,9 @@ def _subtopics_view(qindex):
         sort_by = st.selectbox("Sort by", ["Order", "Name (A–Z)", "Progress", "% Correct"],
                                 key=f"_gsse_sub_sort_{topic['id']}", label_visibility="collapsed")
     with c_filter:
-        type_filter = st.multiselect("Question type", type_options,
-                                      key=f"_gsse_sub_typefilter_{topic['id']}",
-                                      placeholder="Filter by question type",
-                                      label_visibility="collapsed")
+        type_pick = st.selectbox("Question type", filter_choices,
+                                  key=f"_gsse_sub_typefilter_{topic['id']}",
+                                  label_visibility="collapsed")
 
     search_norm = _norm(search) if search else ""
 
@@ -803,8 +805,10 @@ def _subtopics_view(qindex):
 
     if search_norm:
         rows = [r for r in rows if search_norm in _norm(r["sub"]["name"])]
-    if type_filter:
-        rows = [r for r in rows if set(type_filter) & set(r["types"])]
+    if type_pick == "Mixed (2+ types)":
+        rows = [r for r in rows if len(r["types"]) > 1]
+    elif type_pick != "All question types":
+        rows = [r for r in rows if type_pick in r["types"]]
 
     if sort_by == "Name (A–Z)":
         rows.sort(key=lambda r: r["sub"]["name"])
