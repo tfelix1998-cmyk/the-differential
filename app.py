@@ -39,77 +39,103 @@ st.markdown("""
 
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 
-/* Text highlighting in gold when selecting */
-::selection { background: #C9A84C; color: #141210; }
+/* ── Design tokens ──
+   Background:   #F4F6FD (app), #FFFFFF (cards)
+   Border:       #E2E6F5
+   Text primary: #1E2233
+   Text muted:   #6B7290
+   Accent:       #5B62F2 (indigo)
+   Accent hover: #6E75F5
+   Success:      #4CAF6D
+   Danger:       #E5534B
+*/
+
+[data-testid="stAppViewContainer"] { background: #F4F6FD !important; }
+[data-testid="stHeader"] { background: transparent !important; }
+body, [data-testid="stAppViewContainer"] { color: #1E2233 !important; }
+h1, h2, h3, h4, h5, h6 { color: #1E2233 !important; font-weight: 700 !important; }
+p, span, label, div { color: #1E2233; }
+
+::selection { background: #C9CDFB; color: #1E2233; }
 
 /* Metric cards */
 [data-testid="metric-container"] {
-    background: #1E1B16; border: 1px solid #2E2A22;
-    border-radius: 12px; padding: 20px 24px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    background: #FFFFFF; border: 1px solid #E2E6F5;
+    border-radius: 14px; padding: 20px 24px;
+    box-shadow: 0 2px 10px rgba(30,34,51,0.06);
+    transition: transform 0.12s, border-color 0.12s;
 }
-[data-testid="stMetricValue"] { font-size: 2rem !important; font-weight: 800; color: #C9A84C !important; }
-[data-testid="stMetricLabel"] { font-size: 0.75rem !important; color: #8A8070; text-transform: uppercase; letter-spacing: 0.08em; }
+[data-testid="metric-container"]:hover { transform: translateY(-2px); border-color: #C9CDFB; }
+[data-testid="stMetricValue"] { font-size: 2rem !important; font-weight: 800; color: #5B62F2 !important; }
+[data-testid="stMetricLabel"] { font-size: 0.75rem !important; color: #6B7290; text-transform: uppercase; letter-spacing: 0.08em; }
 
-/* Radio buttons */
-.stRadio > label { font-weight: 600; color: #FAFAF8; margin-bottom: 8px; }
-.stRadio > div { gap: 8px !important; }
+/* Radio buttons (answer options) */
+.stRadio > label { font-weight: 600; color: #1E2233; margin-bottom: 8px; }
+.stRadio > div { gap: 10px !important; }
 .stRadio > div > label {
-    border: 1.5px solid #2E2A22 !important; border-radius: 10px !important;
-    padding: 14px 18px !important; background: #1E1B16 !important;
-    color: #FAFAF8 !important; transition: border-color 0.15s, background 0.15s;
+    border: 1.5px solid #E2E6F5 !important; border-radius: 12px !important;
+    padding: 14px 18px !important; background: #FFFFFF !important;
+    color: #1E2233 !important; transition: border-color 0.15s, background 0.15s;
     font-size: 0.95rem; cursor: pointer; width: 100%;
+    box-shadow: 0 1px 3px rgba(30,34,51,0.05);
 }
-.stRadio > div > label:hover { border-color: #C9A84C !important; background: #252015 !important; }
+.stRadio > div > label:hover { border-color: #5B62F2 !important; background: #F7F8FF !important; }
 
 /* Buttons */
 .stButton > button[kind="primary"] {
-    background: #C9A84C !important; color: #141210 !important;
-    border: none !important; border-radius: 8px !important;
+    background: #5B62F2 !important; color: #FFFFFF !important;
+    border: none !important; border-radius: 10px !important;
     font-weight: 700 !important; padding: 10px 24px !important;
     transition: all 0.15s !important;
 }
 .stButton > button[kind="primary"]:hover {
-    background: #D4B86A !important; transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(201,168,76,0.3) !important;
+    background: #6E75F5 !important; transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(91,98,242,0.30) !important;
 }
-.stButton > button { border-radius: 8px !important; font-weight: 600 !important; }
+.stButton > button {
+    border-radius: 10px !important; font-weight: 600 !important;
+    border: 1px solid #E2E6F5 !important; color: #1E2233 !important;
+    background: #FFFFFF !important;
+}
+.stButton > button:hover { border-color: #5B62F2 !important; color: #5B62F2 !important; }
 
 /* Expanders */
 .streamlit-expanderHeader {
-    background: #1E1B16 !important; border: 1px solid #2E2A22 !important;
-    border-radius: 10px !important; font-weight: 600 !important;
-    padding: 12px 16px !important; color: #FAFAF8 !important;
+    background: #FFFFFF !important; border: 1px solid #E2E6F5 !important;
+    border-radius: 12px !important; font-weight: 600 !important;
+    padding: 12px 16px !important; color: #1E2233 !important;
 }
 .streamlit-expanderContent {
-    background: #1E1B16 !important; border: 1px solid #2E2A22 !important;
-    border-top: none !important; border-radius: 0 0 10px 10px !important;
-    padding: 16px !important; color: #FAFAF8 !important;
+    background: #FFFFFF !important; border: 1px solid #E2E6F5 !important;
+    border-top: none !important; border-radius: 0 0 12px 12px !important;
+    padding: 16px !important; color: #1E2233 !important;
 }
 
 /* Tabs */
-.stTabs [data-baseweb="tab-list"] { gap: 4px; background: transparent; border-bottom: 1px solid #2E2A22; }
-.stTabs [data-baseweb="tab"] { border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; padding: 10px 20px !important; color: #8A8070 !important; }
-.stTabs [aria-selected="true"] { color: #C9A84C !important; border-bottom: 2px solid #C9A84C !important; }
+.stTabs [data-baseweb="tab-list"] { gap: 4px; background: transparent; border-bottom: 1px solid #E2E6F5; }
+.stTabs [data-baseweb="tab"] { border-radius: 8px 8px 0 0 !important; font-weight: 600 !important; padding: 10px 20px !important; color: #6B7290 !important; }
+.stTabs [aria-selected="true"] { color: #5B62F2 !important; border-bottom: 2px solid #5B62F2 !important; }
 
 /* Progress bar */
-.stProgress > div > div { background: #C9A84C !important; }
+.stProgress > div > div { background: #5B62F2 !important; }
+.stProgress { background: #E2E6F5 !important; border-radius: 8px; }
 
 /* Text inputs */
 .stTextArea textarea, .stTextInput input {
-    background: #1E1B16 !important; border: 1.5px solid #2E2A22 !important;
-    color: #FAFAF8 !important; border-radius: 8px !important;
+    background: #FFFFFF !important; border: 1.5px solid #E2E6F5 !important;
+    color: #1E2233 !important; border-radius: 10px !important;
 }
-.stTextArea textarea:focus, .stTextInput input:focus { border-color: #C9A84C !important; }
+.stTextArea textarea:focus, .stTextInput input:focus { border-color: #5B62F2 !important; }
 
 /* Dataframe */
-[data-testid="stDataFrame"] { border: 1px solid #2E2A22 !important; border-radius: 10px !important; overflow: hidden; }
+[data-testid="stDataFrame"] { border: 1px solid #E2E6F5 !important; border-radius: 12px !important; overflow: hidden; }
 
 /* Sidebar */
-[data-testid="stSidebar"] { background: #141210 !important; border-right: 1px solid #2E2A22; }
+[data-testid="stSidebar"] { background: #FFFFFF !important; border-right: 1px solid #E2E6F5; }
+[data-testid="stSidebar"] * { color: #1E2233 !important; }
 
 /* Divider */
-hr { border-color: #2E2A22 !important; }
+hr { border-color: #E2E6F5 !important; }
 
 /* Heatmap */
 .heatmap-grid { display: flex; flex-wrap: wrap; gap: 3px; margin: 12px 0; }
@@ -118,78 +144,95 @@ hr { border-color: #2E2A22 !important; }
 /* Streak badge */
 .streak-badge {
     display: inline-flex; align-items: center; gap: 6px;
-    background: #252015; border: 1px solid #C9A84C;
+    background: #EEF0FE; border: 1px solid #5B62F2;
     border-radius: 20px; padding: 6px 14px;
-    font-weight: 700; font-size: 0.95rem; color: #C9A84C;
+    font-weight: 700; font-size: 0.95rem; color: #5B62F2;
 }
 
-/* Mode cards */
+/* Timer / status pill (top-right, e.g. "Timer: 00:29") */
+.status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #EEF0FE; border: 1px solid #C9CDFB;
+    border-radius: 20px; padding: 8px 16px;
+    font-weight: 700; font-size: 0.9rem; color: #5B62F2;
+}
+
+/* Mode cards / module cards */
 .mode-card {
-    background: #1E1B16; border: 2px solid #2E2A22;
+    background: #FFFFFF; border: 1.5px solid #E2E6F5;
     border-radius: 16px; padding: 28px 24px;
     cursor: pointer; transition: all 0.2s;
     text-align: center;
+    box-shadow: 0 2px 10px rgba(30,34,51,0.05);
 }
-.mode-card:hover { border-color: #C9A84C; background: #252015; }
+.mode-card:hover { border-color: #5B62F2; transform: translateY(-2px); box-shadow: 0 6px 18px rgba(91,98,242,0.15); }
 
 /* Option rows in exam mode */
 .opt-row {
     display: flex; align-items: center; gap: 14px;
-    background: #1E1B16; border: 1.5px solid #2E2A22;
-    border-radius: 12px; padding: 16px 20px;
+    background: #FFFFFF; border: 1.5px solid #E2E6F5;
+    border-radius: 14px; padding: 16px 20px;
     margin-bottom: 10px; cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
-    color: #FAFAF8; font-size: 0.97rem; line-height: 1.5;
+    color: #1E2233; font-size: 0.97rem; line-height: 1.5;
+    box-shadow: 0 1px 3px rgba(30,34,51,0.05);
 }
-.opt-row:hover { border-color: #C9A84C; background: #252015; }
-.opt-correct { background: #1A3020 !important; border-color: #4CAF50 !important; }
-.opt-wrong   { background: #2A1010 !important; border-color: #EF5350 !important; }
-.opt-dim     { opacity: 0.45; }
+.opt-row:hover { border-color: #5B62F2; background: #F7F8FF; }
+.opt-correct { background: #EAF7EE !important; border-color: #4CAF6D !important; box-shadow: 0 0 0 1px #4CAF6D inset; }
+.opt-wrong   { background: #FCEDEC !important; border-color: #E5534B !important; box-shadow: 0 0 0 1px #E5534B inset; }
+.opt-dim     { opacity: 0.5; }
+
+/* "Correct" / "Incorrect" trailing label inside an answered opt-row */
+.opt-correct::after { content: "Correct"; margin-left: auto; font-weight: 700; color: #FFFFFF;
+    background: #4CAF6D; padding: 4px 12px; border-radius: 20px; font-size: 0.82rem; }
 
 .badge {
     min-width: 32px; height: 32px; border-radius: 8px;
     display: inline-flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 0.85rem; background: #2E2A22; color: #8A8070;
+    font-weight: 700; font-size: 0.85rem; background: #EEF0FE; color: #6B7290;
     flex-shrink: 0;
 }
-.badge-correct { background: #4CAF50 !important; color: #141210 !important; }
-.badge-wrong   { background: #EF5350 !important; color: #FAFAF8 !important; }
-.badge-gold    { background: #C9A84C !important; color: #141210 !important; }
+.badge-correct { background: #4CAF6D !important; color: #FFFFFF !important; }
+.badge-wrong   { background: #E5534B !important; color: #FFFFFF !important; }
+.badge-gold    { background: #5B62F2 !important; color: #FFFFFF !important; }
 
-/* ── Phase 3 polish ── */
+/* Explanation panel */
+.explanation-box {
+    background: #F7F8FF; border: 1px solid #E2E6F5;
+    border-radius: 14px; padding: 20px 24px; margin-top: 16px;
+}
+.explanation-box h4 { margin-top: 0; color: #1E2233 !important; }
+.tag-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid #C9CDFB; color: #5B62F2; background: #FFFFFF;
+    border-radius: 20px; padding: 6px 14px; font-weight: 600; font-size: 0.85rem;
+    margin-right: 8px;
+}
 
-/* Compact navigator buttons (the Items 1..N column) */
+/* ── Layout polish ── */
+
+/* Compact navigator buttons (the Items 1..N column / question map) */
 [data-testid="column"]:first-child .stButton > button {
     padding: 6px 8px !important;
     font-size: 0.82rem !important;
-    font-family: monospace !important;
-    text-align: left !important;
-    border-radius: 6px !important;
-    border: 1px solid #2E2A22 !important;
-    background: #1A1813 !important;
-    color: #C9B98A !important;
+    font-family: 'Inter', sans-serif !important;
+    text-align: center !important;
+    border-radius: 8px !important;
+    border: 1px solid #E2E6F5 !important;
+    background: #FFFFFF !important;
+    color: #6B7290 !important;
     margin-bottom: 2px !important;
     min-height: 0 !important;
     line-height: 1.2 !important;
 }
 [data-testid="column"]:first-child .stButton > button:hover {
-    border-color: #C9A84C !important;
-    background: #252015 !important;
-    color: #FAFAF8 !important;
+    border-color: #5B62F2 !important;
+    background: #F7F8FF !important;
+    color: #5B62F2 !important;
 }
-
-/* Tighter option rows with a subtle lift */
-.opt-row {
-    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-}
-.opt-correct { box-shadow: 0 0 0 1px #4CAF50 inset; }
-.opt-wrong   { box-shadow: 0 0 0 1px #EF5350 inset; }
 
 /* Radio options as clean cards in exam mode (pre-submission) */
-.stRadio > div > label {
-    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-    line-height: 1.5 !important;
-}
+.stRadio > div > label { line-height: 1.5 !important; }
 
 /* Expander as a quieter, flatter panel */
 .streamlit-expanderHeader { font-size: 0.9rem !important; }
@@ -199,10 +242,6 @@ hr { border-color: #2E2A22 !important; }
 
 /* Primary action buttons a touch chunkier */
 .stButton > button[kind="primary"] { letter-spacing: 0.02em; }
-
-/* Metric cards: subtle hover lift on dashboard */
-[data-testid="metric-container"] { transition: transform 0.12s, border-color 0.12s; }
-[data-testid="metric-container"]:hover { transform: translateY(-2px); border-color: #3A352B; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1066,11 +1105,11 @@ def build_heatmap_html(days=182, user=None):
 
     # Green gradient: more activity -> darker, richer green
     def cell_colour(cnt):
-        if cnt <= 0:   return "#2E2A22"   # empty
-        if cnt <= 2:   return "#9BE08B"   # light green (1-2)
-        if cnt <= 5:   return "#5FC96F"   # medium (3-5)
-        if cnt <= 9:   return "#2F9E41"   # dark (6-9)
-        return "#176127"                  # darkest (10+)
+        if cnt <= 0:   return "#E2E6F5"   # empty
+        if cnt <= 2:   return "#C6E9D0"   # light green (1-2)
+        if cnt <= 5:   return "#8DD3A3"   # medium (3-5)
+        if cnt <= 9:   return "#4CAF6D"   # dark (6-9)
+        return "#227A46"                  # darkest (10+)
 
     cells = []
     for i in range(days - 1, -1, -1):
@@ -1254,12 +1293,12 @@ with st.sidebar:
     exam_date = st.date_input("Exam date", value=date.today() + timedelta(days=30),
                                min_value=date.today(), label_visibility="collapsed")
     days_left = (exam_date - date.today()).days
-    urgency = "#4CAF50" if days_left > 14 else "#C9A84C" if days_left > 7 else "#EF5350"
+    urgency = "#4CAF6D" if days_left > 14 else "#5B62F2" if days_left > 7 else "#E5534B"
     st.markdown(
-        f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+        f'<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;'
         f'text-align:center;padding:20px;">'
         f'<div style="font-size:2.8rem;font-weight:800;color:{urgency};">{days_left}</div>'
-        f'<div style="color:#8A8070;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;">Days to Exam</div>'
+        f'<div style="color:#6B7290;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;">Days to Exam</div>'
         f'</div>', unsafe_allow_html=True
     )
     st.markdown("---")
@@ -1399,9 +1438,9 @@ with tab_dash:
                 agg[cat][disp][0] += 1
 
         def bar_colour(pct):
-            if pct >= 75: return "#4CAF50"
-            if pct >= 50: return "#C9A84C"
-            return "#EF5350"
+            if pct >= 75: return "#4CAF6D"
+            if pct >= 50: return "#5B62F2"
+            return "#E5534B"
 
         for cat in sorted(agg.keys()):
             # Category-level totals
@@ -1409,8 +1448,8 @@ with tab_dash:
             c_total = sum(v[1] for v in agg[cat].values())
             c_pct = (c_correct / c_total * 100) if c_total else 0
             st.markdown(
-                f'<div style="margin-top:14px;font-weight:700;color:#C9A84C;">{cat} '
-                f'<span style="color:#8A8070;font-weight:500;font-size:0.85rem;">'
+                f'<div style="margin-top:14px;font-weight:700;color:#5B62F2;">{cat} '
+                f'<span style="color:#6B7290;font-weight:500;font-size:0.85rem;">'
                 f'· {c_correct}/{c_total} ({c_pct:.0f}%)</span></div>',
                 unsafe_allow_html=True
             )
@@ -1420,9 +1459,9 @@ with tab_dash:
                 col = bar_colour(pct)
                 st.markdown(
                     f'<div style="display:flex;align-items:center;gap:12px;margin:4px 0;">'
-                    f'<div style="width:160px;font-size:0.85rem;color:#FAFAF8;overflow:hidden;'
+                    f'<div style="width:160px;font-size:0.85rem;color:#1E2233;overflow:hidden;'
                     f'text-overflow:ellipsis;white-space:nowrap;">{topic}</div>'
-                    f'<div style="flex:1;background:#2E2A22;border-radius:6px;height:14px;position:relative;">'
+                    f'<div style="flex:1;background:#E2E6F5;border-radius:6px;height:14px;position:relative;">'
                     f'<div style="width:{pct:.0f}%;background:{col};height:14px;border-radius:6px;"></div></div>'
                     f'<div style="width:70px;text-align:right;font-size:0.82rem;font-weight:600;color:{col};">'
                     f'{pct:.0f}% ({correct}/{tot})</div></div>',
@@ -1488,15 +1527,15 @@ with tab_dash:
 
     st.markdown("#### 📅 Activity Heatmap")
     st.markdown(
-        '<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;padding:20px 24px;">'
+        '<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;padding:20px 24px;">'
         + build_heatmap_html(days=119, user=du) +
-        '<div style="font-size:0.75rem;color:#8A8070;margin-top:10px;display:flex;align-items:center;gap:6px;">'
+        '<div style="font-size:0.75rem;color:#6B7290;margin-top:10px;display:flex;align-items:center;gap:6px;">'
         'Less'
-        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#2E2A22;"></span>'
-        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#9BE08B;"></span>'
-        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#5FC96F;"></span>'
-        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#2F9E41;"></span>'
-        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#176127;"></span>'
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#E2E6F5;"></span>'
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#C6E9D0;"></span>'
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#8DD3A3;"></span>'
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#4CAF6D;"></span>'
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#227A46;"></span>'
         'More &nbsp;·&nbsp; darker = more questions that day'
         '</div>'
         '</div>', unsafe_allow_html=True
@@ -1517,7 +1556,7 @@ with tab_dash:
             df_acc = pd.DataFrame([{"date": d, "Accuracy (%)": v[0]/v[1]*100} for d, v in daily.items()]).set_index("date")
             st.line_chart(df_acc, height=220)
         else:
-            st.markdown('<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;padding:40px;text-align:center;color:#8A8070;">Attempt MCQs to see trends</div>', unsafe_allow_html=True)
+            st.markdown('<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;padding:40px;text-align:center;color:#6B7290;">Attempt MCQs to see trends</div>', unsafe_allow_html=True)
 
     with col_r:
         st.markdown("#### 🧠 Viva Confidence")
@@ -1525,7 +1564,7 @@ with tab_dash:
             conf_df = pd.DataFrame({"Confidence": ["🔴 Hard","🟡 Good","🟢 Easy"], "Count": [hard_n, good_n, easy_n]}).set_index("Confidence")
             st.bar_chart(conf_df, height=220)
         else:
-            st.markdown('<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;padding:40px;text-align:center;color:#8A8070;">Rate viva confidence to see this</div>', unsafe_allow_html=True)
+            st.markdown('<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;padding:40px;text-align:center;color:#6B7290;">Rate viva confidence to see this</div>', unsafe_allow_html=True)
 
     st.markdown("#### 🗒️ Recent MCQ Attempts")
     recent = c.execute("SELECT timestamp, topic, is_correct FROM mcq_attempts WHERE user=? ORDER BY timestamp DESC LIMIT 15", (du,)).fetchall()
@@ -1534,7 +1573,7 @@ with tab_dash:
         rdf["Result"] = rdf["Correct"].map({1:"✅ Correct", 0:"❌ Incorrect"})
         st.dataframe(rdf[["Time","Topic","Result"]], use_container_width=True, hide_index=True)
     else:
-        st.markdown('<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;padding:30px;text-align:center;color:#8A8070;">No attempts yet</div>', unsafe_allow_html=True)
+        st.markdown('<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;padding:30px;text-align:center;color:#6B7290;">No attempts yet</div>', unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # VIVA TAB
@@ -1620,9 +1659,9 @@ with tab_viva:
         with col_cnt: st.caption(f"{reviewed} / {total_q} reviewed")
         with col_marks:
             st.markdown(
-                f'<div style="background:#16324A;border-radius:10px;padding:6px 14px;text-align:center;">'
-                f'<div style="color:#9FC4DE;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Your Marks</div>'
-                f'<div style="color:#FAFAF8;font-size:1.3rem;font-weight:700;">{marks_scored_sum:g} / {marks_max_sum:g}</div>'
+                f'<div style="background:#EEF0FE;border-radius:10px;padding:6px 14px;text-align:center;">'
+                f'<div style="color:#5B62F2;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Your Marks</div>'
+                f'<div style="color:#1E2233;font-size:1.3rem;font-weight:700;">{marks_scored_sum:g} / {marks_max_sum:g}</div>'
                 f'</div>',
                 unsafe_allow_html=True
             )
@@ -1632,9 +1671,9 @@ with tab_viva:
             good_v = sum(1 for v in st.session_state["viva_confidence_logged"].values() if v == 2)
             easy_v = sum(1 for v in st.session_state["viva_confidence_logged"].values() if v == 3)
             st.markdown(
-                f'<span style="background:#2A1010;color:#EF5350;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;margin-right:6px;">🔴 Hard: {hard_v}</span>'
-                f'<span style="background:#2A1E10;color:#C9A84C;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;margin-right:6px;">🟡 Good: {good_v}</span>'
-                f'<span style="background:#1A3020;color:#4CAF50;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">🟢 Easy: {easy_v}</span>',
+                f'<span style="background:#FCEDEC;color:#E5534B;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;margin-right:6px;">🔴 Hard: {hard_v}</span>'
+                f'<span style="background:#FFF6E5;color:#B8860B;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;margin-right:6px;">🟡 Good: {good_v}</span>'
+                f'<span style="background:#EAF7EE;color:#4CAF6D;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">🟢 Easy: {easy_v}</span>',
                 unsafe_allow_html=True
             )
             st.markdown("")
@@ -1659,8 +1698,8 @@ with tab_viva:
                     lines = qa["answer"].split("\n")
                     bullets = "".join(f"<li style='margin:4px 0;'>{l.strip()}</li>" for l in lines if l.strip())
                     st.markdown(
-                        f'<div style="background:#1E1A10;border-left:4px solid #C9A84C;'
-                        f'border-radius:0 8px 8px 0;padding:14px 18px;margin:8px 0;color:#FAFAF8;">'
+                        f'<div style="background:#EEF0FE;border-left:4px solid #5B62F2;'
+                        f'border-radius:0 8px 8px 0;padding:14px 18px;margin:8px 0;color:#1E2233;">'
                         f'<ul style="margin:0;padding-left:18px;">{bullets}</ul></div>',
                         unsafe_allow_html=True
                     )
@@ -1790,7 +1829,7 @@ with tab_mcq:
             st.markdown("")
 
             st.markdown(
-                '<p style="color:#8A8070;font-size:0.9rem;text-transform:uppercase;'
+                '<p style="color:#6B7290;font-size:0.9rem;text-transform:uppercase;'
                 'letter-spacing:0.08em;font-weight:600;">Select Mode</p>',
                 unsafe_allow_html=True
             )
@@ -1800,8 +1839,8 @@ with tab_mcq:
                 st.markdown(
                     '<div class="mode-card">'
                     '<div style="font-size:2rem;margin-bottom:12px;">⏱️</div>'
-                    '<div style="font-size:1.1rem;font-weight:700;color:#FAFAF8;margin-bottom:8px;">Exam Mode</div>'
-                    '<div style="color:#8A8070;font-size:0.875rem;line-height:1.5;">'
+                    '<div style="font-size:1.1rem;font-weight:700;color:#1E2233;margin-bottom:8px;">Exam Mode</div>'
+                    '<div style="color:#6B7290;font-size:0.875rem;line-height:1.5;">'
                     'One question at a time · Live timer · Simulate exam conditions</div>'
                     '</div>', unsafe_allow_html=True
                 )
@@ -1817,8 +1856,8 @@ with tab_mcq:
                 st.markdown(
                     '<div class="mode-card">'
                     '<div style="font-size:2rem;margin-bottom:12px;">📖</div>'
-                    '<div style="font-size:1.1rem;font-weight:700;color:#FAFAF8;margin-bottom:8px;">Review Mode</div>'
-                    '<div style="color:#8A8070;font-size:0.875rem;line-height:1.5;">'
+                    '<div style="font-size:1.1rem;font-weight:700;color:#1E2233;margin-bottom:8px;">Review Mode</div>'
+                    '<div style="color:#6B7290;font-size:0.875rem;line-height:1.5;">'
                     'All questions visible · No timer · Submit and review explanations</div>'
                     '</div>', unsafe_allow_html=True
                 )
@@ -1840,7 +1879,7 @@ with tab_mcq:
             # ── Question navigator ──
             with nav_col:
                 st.markdown(
-                    '<p style="color:#8A8070;font-size:0.7rem;text-transform:uppercase;'
+                    '<p style="color:#6B7290;font-size:0.7rem;text-transform:uppercase;'
                     'letter-spacing:0.08em;font-weight:700;margin-bottom:8px;">Items</p>',
                     unsafe_allow_html=True
                 )
@@ -1883,11 +1922,11 @@ with tab_mcq:
 
                 render_image(mcq)
                 st.markdown(
-                    f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+                    f'<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;'
                     f'padding:24px 28px;margin:12px 0 20px 0;user-select:text;cursor:text;">'
-                    f'<span style="font-size:0.75rem;font-weight:700;color:#C9A84C;'
+                    f'<span style="font-size:0.75rem;font-weight:700;color:#5B62F2;'
                     f'text-transform:uppercase;letter-spacing:0.08em;">Question {idx+1}</span>'
-                    f'<p style="margin:12px 0 0 0;font-size:1.02rem;line-height:1.75;color:#FAFAF8;">'
+                    f'<p style="margin:12px 0 0 0;font-size:1.02rem;line-height:1.75;color:#1E2233;">'
                     f'{mcq["question_text"]}</p></div>',
                     unsafe_allow_html=True
                 )
@@ -1934,14 +1973,14 @@ with tab_mcq:
 
                     if sub["correct"]:
                         st.markdown(
-                            '<div style="background:#1A3020;border:1.5px solid #4CAF50;border-radius:12px;'
-                            'padding:12px 18px;margin:16px 0;color:#81C784;font-weight:600;">✓ Correct</div>',
+                            '<div style="background:#EAF7EE;border:1.5px solid #4CAF6D;border-radius:12px;'
+                            'padding:12px 18px;margin:16px 0;color:#2E9E58;font-weight:600;">✓ Correct</div>',
                             unsafe_allow_html=True
                         )
                     else:
                         st.markdown(
-                            f'<div style="background:#1E1A10;border:1.5px solid #C9A84C;border-radius:12px;'
-                            f'padding:12px 18px;margin:16px 0;color:#C9A84C;font-weight:600;">'
+                            f'<div style="background:#EEF0FE;border:1.5px solid #5B62F2;border-radius:12px;'
+                            f'padding:12px 18px;margin:16px 0;color:#5B62F2;font-weight:600;">'
                             f'Correct answer: {correct_letter}</div>',
                             unsafe_allow_html=True
                         )
@@ -1974,12 +2013,12 @@ with tab_mcq:
 
                 st.markdown(
                     f'<div style="display:flex;justify-content:space-between;align-items:center;'
-                    f'background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+                    f'background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;'
                     f'padding:14px 20px;margin-bottom:16px;">'
-                    f'<span style="font-weight:700;color:#C9A84C;font-size:1rem;">Item {idx+1} / {total}</span>'
-                    f'<div style="flex:1;margin:0 20px;background:#2E2A22;border-radius:4px;height:6px;">'
-                    f'<div style="width:{pct:.0f}%;background:#C9A84C;height:6px;border-radius:4px;transition:width 0.3s;"></div></div>'
-                    f'<span style="font-weight:700;color:#8A8070;font-family:monospace;font-size:1rem;">⏱ {fmt_time(elapsed)}</span>'
+                    f'<span style="font-weight:700;color:#5B62F2;font-size:1rem;">Item {idx+1} / {total}</span>'
+                    f'<div style="flex:1;margin:0 20px;background:#E2E6F5;border-radius:4px;height:6px;">'
+                    f'<div style="width:{pct:.0f}%;background:#5B62F2;height:6px;border-radius:4px;transition:width 0.3s;"></div></div>'
+                    f'<span style="font-weight:700;color:#6B7290;font-family:monospace;font-size:1rem;">⏱ {fmt_time(elapsed)}</span>'
                     f'</div>',
                     unsafe_allow_html=True
                 )
@@ -1988,9 +2027,9 @@ with tab_mcq:
                     acc = correct_n / attempted * 100
                     st.markdown(
                         f'<div style="display:flex;gap:16px;margin-bottom:12px;">'
-                        f'<span style="background:#1A3020;color:#4CAF50;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">✅ {correct_n} correct</span>'
-                        f'<span style="background:#2A1010;color:#EF5350;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">❌ {attempted-correct_n} incorrect</span>'
-                        f'<span style="background:#252015;color:#C9A84C;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">📊 {acc:.0f}% accuracy</span>'
+                        f'<span style="background:#EAF7EE;color:#4CAF6D;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">✅ {correct_n} correct</span>'
+                        f'<span style="background:#FCEDEC;color:#E5534B;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">❌ {attempted-correct_n} incorrect</span>'
+                        f'<span style="background:#EEF0FE;color:#5B62F2;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">📊 {acc:.0f}% accuracy</span>'
                         f'</div>', unsafe_allow_html=True
                     )
 
@@ -2027,11 +2066,11 @@ with tab_mcq:
 
                 render_image(mcq)
                 st.markdown(
-                    f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+                    f'<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;'
                     f'padding:20px 24px;margin-bottom:8px;user-select:text;cursor:text;">'
-                    f'<span style="font-size:0.75rem;font-weight:700;color:#C9A84C;'
+                    f'<span style="font-size:0.75rem;font-weight:700;color:#5B62F2;'
                     f'text-transform:uppercase;letter-spacing:0.08em;">Question {i+1}{status}</span>'
-                    f'<p style="margin:10px 0 0 0;font-size:1rem;line-height:1.7;color:#FAFAF8;">'
+                    f'<p style="margin:10px 0 0 0;font-size:1rem;line-height:1.7;color:#1E2233;">'
                     f'{mcq["question_text"]}</p></div>',
                     unsafe_allow_html=True
                 )
@@ -2123,9 +2162,9 @@ with tab_anki:
         col_a1, col_a2 = st.columns([3, 1])
         with col_a1:
             st.markdown(
-                f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;padding:16px 24px;">'
-                f'<span style="font-size:2rem;font-weight:800;color:#C9A84C;">{len(card_lines)}</span>'
-                f'<span style="color:#8A8070;font-size:0.85rem;margin-left:8px;">cards generated</span>'
+                f'<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;padding:16px 24px;">'
+                f'<span style="font-size:2rem;font-weight:800;color:#5B62F2;">{len(card_lines)}</span>'
+                f'<span style="color:#6B7290;font-size:0.85rem;margin-left:8px;">cards generated</span>'
                 f'</div>', unsafe_allow_html=True
             )
         with col_a2:
@@ -2134,8 +2173,8 @@ with tab_anki:
 
         st.code(raw_anki, language=None)
         st.markdown(
-            '<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;padding:16px 24px;font-size:0.85rem;color:#8A8070;">'
-            '📥 <strong style="color:#C9A84C;">How to import:</strong> Anki → File → Import → select .txt → '
+            '<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;padding:16px 24px;font-size:0.85rem;color:#6B7290;">'
+            '📥 <strong style="color:#5B62F2;">How to import:</strong> Anki → File → Import → select .txt → '
             'separator <code>|</code> → note type <strong>Cloze</strong> → Import'
             '</div>', unsafe_allow_html=True
         )
@@ -2170,7 +2209,7 @@ with tab_mock:
         else:
             total_available = sum(n for _, _, n in topics)
             st.markdown(
-                f'<p style="color:#8A8070;font-size:0.9rem;text-transform:uppercase;'
+                f'<p style="color:#6B7290;font-size:0.9rem;text-transform:uppercase;'
                 f'letter-spacing:0.08em;font-weight:600;">Choose Topics '
                 f'({len(topics)} available · {total_available} questions total)</p>',
                 unsafe_allow_html=True
@@ -2203,7 +2242,7 @@ with tab_mock:
                         sub_hashes = [doc_hash for _, _, doc_hash, _ in items]
                         if sub:
                             head_l, head_r = st.columns([5, 1.3])
-                            head_l.markdown(f"<span style='color:#C9A84C;font-weight:700;"
+                            head_l.markdown(f"<span style='color:#5B62F2;font-weight:700;"
                                             f"font-size:0.85rem;'>{sub}</span>", unsafe_allow_html=True)
                             already_all = all(st.session_state.get(f"mock_pick_{h}", False) for h in sub_hashes)
                             btn_label = "Clear" if already_all else "Select all"
@@ -2286,7 +2325,7 @@ with tab_mock:
 
         with nav_col:
             st.markdown(
-                '<p style="color:#8A8070;font-size:0.7rem;text-transform:uppercase;'
+                '<p style="color:#6B7290;font-size:0.7rem;text-transform:uppercase;'
                 'letter-spacing:0.08em;font-weight:700;margin-bottom:8px;">Items</p>',
                 unsafe_allow_html=True
             )
@@ -2316,29 +2355,29 @@ with tab_mock:
             if timed and limit > 0:
                 remaining = limit - elapsed
                 if remaining <= 0:
-                    timer_html = ('<span style="font-weight:700;color:#EF5350;font-family:monospace;'
+                    timer_html = ('<span style="font-weight:700;color:#E5534B;font-family:monospace;'
                                   'font-size:1rem;">⏱ TIME UP</span>')
                 else:
                     # gold normally, orange under 5 min, red under 1 min
-                    tcol = "#C9A84C"
+                    tcol = "#5B62F2"
                     if remaining < 60:
-                        tcol = "#EF5350"
+                        tcol = "#E5534B"
                     elif remaining < 300:
                         tcol = "#E0913C"
                     timer_html = (f'<span style="font-weight:700;color:{tcol};font-family:monospace;'
                                   f'font-size:1rem;">⏱ {fmt_time(remaining)} left</span>')
             elif timed:
-                timer_html = (f'<span style="font-weight:700;color:#8A8070;font-family:monospace;'
+                timer_html = (f'<span style="font-weight:700;color:#6B7290;font-family:monospace;'
                               f'font-size:1rem;">⏱ {fmt_time(elapsed)}</span>')
             else:
-                timer_html = '<span style="color:#8A8070;font-size:0.85rem;">Untimed</span>'
+                timer_html = '<span style="color:#6B7290;font-size:0.85rem;">Untimed</span>'
             st.markdown(
                 f'<div style="display:flex;justify-content:space-between;align-items:center;'
-                f'background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+                f'background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;'
                 f'padding:14px 20px;margin-bottom:16px;">'
-                f'<span style="font-weight:700;color:#C9A84C;font-size:1rem;">Item {idx+1} / {total}</span>'
-                f'<div style="flex:1;margin:0 20px;background:#2E2A22;border-radius:4px;height:6px;">'
-                f'<div style="width:{pct:.0f}%;background:#C9A84C;height:6px;border-radius:4px;"></div></div>'
+                f'<span style="font-weight:700;color:#5B62F2;font-size:1rem;">Item {idx+1} / {total}</span>'
+                f'<div style="flex:1;margin:0 20px;background:#E2E6F5;border-radius:4px;height:6px;">'
+                f'<div style="width:{pct:.0f}%;background:#5B62F2;height:6px;border-radius:4px;"></div></div>'
                 f'{timer_html}</div>',
                 unsafe_allow_html=True
             )
@@ -2371,9 +2410,9 @@ with tab_mock:
 
                 render_image(mcq)
                 st.markdown(
-                    f'<div style="background:#1E1B16;border:1px solid #2E2A22;border-radius:12px;'
+                    f'<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;'
                     f'padding:24px 28px;margin:12px 0 20px 0;user-select:text;cursor:text;">'
-                    f'<p style="margin:0;font-size:1.02rem;line-height:1.75;color:#FAFAF8;">'
+                    f'<p style="margin:0;font-size:1.02rem;line-height:1.75;color:#1E2233;">'
                     f'{mcq["question_text"]}</p></div>',
                     unsafe_allow_html=True
                 )
