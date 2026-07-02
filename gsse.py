@@ -304,27 +304,18 @@ def _inject_q_styles():
     margin-bottom: 10px;
     line-height: 1.4;
 }
-/* ---- T/F grid ---- */
-.tf-header {
-    display: grid;
-    grid-template-columns: 52px 52px 1fr;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #6b7280;
-    margin-bottom: 4px;
-    padding-left: 2px;
-}
-.tf-row {
-    display: grid;
-    grid-template-columns: 52px 52px 1fr;
-    align-items: center;
-    padding: 8px 0;
-    border-bottom: 1px solid #f3f4f6;
-}
+/* ---- T/F statements ---- */
 .tf-stmt {
-    font-size: 0.9rem;
+    font-size: 1rem;
     color: #1f2937;
-    line-height: 1.4;
+    line-height: 1.5;
+    font-weight: 500;
+    margin: 2px 0 6px;
+}
+.tf-sep {
+    border: none;
+    border-top: 1px solid #eef0f5;
+    margin: 10px 0;
 }
 /* ---- result badges ---- */
 .q-result-ok  { color: #059669; font-weight: 600; }
@@ -449,22 +440,17 @@ def _render_typeX(q, key):
             return None
 
         picks = []
-        st.markdown('<div class="tf-header"><div>True</div><div>False</div><div></div></div>',
-                     unsafe_allow_html=True)
         for i, stmt in enumerate(stmts):
-            col_t, col_f, col_text = st.columns([1, 1, 8])
-            t_sel = col_t.checkbox("T", key=f"{key}_s{i}_T", label_visibility="collapsed")
-            f_sel = col_f.checkbox("F", key=f"{key}_s{i}_F", label_visibility="collapsed")
-            col_text.markdown(f'<div class="tf-stmt">{stmt["text"]}</div>', unsafe_allow_html=True)
-            if t_sel and f_sel:
-                pick = None
-            elif t_sel:
-                pick = "True"
-            elif f_sel:
-                pick = "False"
-            else:
-                pick = None
-            picks.append(pick)
+            st.markdown(f'<div class="tf-stmt">{i + 1}.&nbsp; {stmt["text"]}</div>',
+                        unsafe_allow_html=True)
+            choice = st.radio(
+                "tf", ["True", "False"], key=f"{key}_s{i}", index=None,
+                horizontal=True, label_visibility="collapsed",
+            )
+            picks.append(choice)
+            if i < len(stmts) - 1:
+                st.markdown('<hr class="tf-sep">', unsafe_allow_html=True)
+        st.write("")
 
         if st.button("Submit Answer", key=f"{key}_check", type="primary", use_container_width=True):
             st.session_state[answered_key] = True
@@ -504,7 +490,7 @@ def _render_typeA(q, key):
 
     picked = st.radio("", opts, key=f"{key}_opt", index=None,
                       label_visibility="collapsed",
-                      format_func=lambda o: re.sub(r"^[A-Za-z][\.\)]\s*", "", o))
+                      format_func=lambda o: re.sub(r"^\s*([A-Za-z])[\.\)]\s*", r"\1.  ", o))
 
     if st.button("Submit Answer", key=f"{key}_check", type="primary", use_container_width=True):
         picked_letter = _option_letter(picked) if picked else None
