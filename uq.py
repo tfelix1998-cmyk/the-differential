@@ -400,7 +400,7 @@ def _mcq_card(topic_id, mcq, number, key):
 
     picked = st.radio("", options, key=f"{key}_opt", index=None,
                       label_visibility="collapsed",
-                      format_func=lambda o: o[2:].strip() if len(o) > 2 else o)
+                      format_func=lambda o: _re.sub(r"^\s*([A-Za-z])[\.\)]\s*", r"\1.  ", o))
 
     if st.button("Submit Answer", key=f"{key}_check", type="primary", use_container_width=True):
         picked_letter = picked.strip()[0].upper() if picked else None
@@ -619,6 +619,85 @@ def _modules_view(content):
 # View: Topics tree (now filtered to the selected module; back button added)
 # ---------------------------------------------------------------------------
 
+def _emed_broad_groups(content):
+    """Group EMED topics into {broad_system: [(topic_id, subtopic_name, n_mcq)]}.
+    EMED topic names look like 'Cardiology - Hypertension'."""
+    groups = {}
+    for t in ucfg.topics_for_section("EMED"):
+        broad, _, path = t["name"].partition(" - ")
+        n_mcq = _topic_counts(content, t["id"])[0]
+        groups.setdefault(broad.strip(), []).append(
+            (t["id"], (path.strip() or broad.strip()), n_mcq))
+    for b in groups:
+        groups[b].sort(key=lambda x: x[1])
+    return groups
+
+
+def _emed_selector_view(content):
+    """UWorld-style test builder: expandable systems -> subtopics with counts and
+    checkboxes, then start a combined quiz across everything selected."""
+    st.markdown("### 🩺 Build a set")
+    st.caption("Choose systems and subtopics, then start a combined quiz.")
+
+    groups = _emed_broad_groups(content)
+    def is_sel(tid):
+        return st.session_state.get(f"_emed_cb_{tid}", False)
+    all_tids = [tid for subs in groups.values() for tid, _, n in subs if n]
+    sel_ids = [tid for tid in all_tids if is_sel(tid)]
+    total_q = sum(_topic_counts(content, tid)[0] for tid in sel_ids)
+
+    # ── action bar ──
+    bar = st.columns([3, 1.3, 1.7])
+    bar[0].markdown(f"**{len(sel_ids)} subtopics · {total_q} questions selected**")
+    if bar[1].button("Clear all", use_container_width=True, disabled=not sel_ids):
+        for tid in all_tids:
+            st.session_state[f"_emed_cb_{tid}"] = False
+        st.rerun()
+    if bar[2].button(f"▶ Start quiz ({total_q})", type="primary",
+                     use_container_width=True, disabled=not total_q):
+        combined = []
+        for broad in sorted(groups):
+            for tid, _, n in groups[broad]:
+                if is_sel(tid):
+                    combined += content.get(tid, {}).get("mcq", [])
+        st.session_state["_emed_combined"] = combined
+        st.session_state["_emed_combined_name"] = f"{len(sel_ids)} subtopics · {total_q} Qs"
+        _go("study", topic_id="__EMED_CUSTOM__")
+
+    search = st.text_input("s", key="_emed_sel_search",
+                           placeholder="🔍  Search systems / subtopics",
+                           label_visibility="collapsed")
+    sn = search.strip().lower() if search else ""
+    st.markdown("<hr style='margin:6px 0 12px;'>", unsafe_allow_html=True)
+
+    broads = sorted(groups)
+    if sn:
+        broads = [b for b in broads
+                  if sn in b.lower() or any(sn in p.lower() for _, p, _ in groups[b])]
+    if not broads:
+        st.info("No systems match your search.")
+        return
+
+    cols = st.columns(2)
+    for i, broad in enumerate(broads):
+        subs = groups[broad]
+        if sn and sn not in broad.lower():
+            subs = [s for s in subs if sn in s[1].lower()]
+        broad_total = sum(n for _, _, n in subs)
+        n_here = sum(1 for tid, _, n in subs if is_sel(tid))
+        with cols[i % 2]:
+            title = f"{broad}  ·  {broad_total} Qs" + (f"   ✓ {n_here}" if n_here else "")
+            with st.expander(title, expanded=bool(sn)):
+                if st.button("Select all in this system", key=f"_emed_all_{broad}",
+                             use_container_width=True):
+                    for tid, _, n in groups[broad]:
+                        if n:
+                            st.session_state[f"_emed_cb_{tid}"] = True
+                    st.rerun()
+                for tid, path, n in subs:
+                    st.checkbox(f"{path}  ({n})", key=f"_emed_cb_{tid}", disabled=(n == 0))
+
+
 def _topics_view(content):
     active_section = st.session_state.get("_uq_module")
     top = st.columns([6, 2])
@@ -633,6 +712,10 @@ def _topics_view(content):
         if active_section and st.button("← Back to modules"):
             st.session_state["_uq_module"] = None
             st.rerun()
+
+    if active_section == "EMED":
+        _emed_selector_view(content)
+        return
 
     sections_to_show = [active_section] if active_section else SECTION_ORDER
 
@@ -821,6 +904,21 @@ def _mcq_study_panel(tid, mcqs):
 
 def _study_view(content):
     tid = st.session_state.get("_uq_topic")
+
+    # Combined EMED set built from the selector
+    if tid == "__EMED_CUSTOM__":
+        mcqs = st.session_state.get("_emed_combined", [])
+        name = st.session_state.get("_emed_combined_name", "Custom set")
+        top = st.columns([6, 2])
+        top[0].markdown(f"### 🩺 EMED — {name}")
+        if top[1].button("← Back to builder"):
+            _go("topics")
+        if not mcqs:
+            st.info("No questions selected. Go back and pick some subtopics.")
+            return
+        _mcq_study_panel("__EMED_CUSTOM__", mcqs)
+        return
+
     topic = ucfg.get_topic(tid)
     if topic is None:
         _go("topics"); return
