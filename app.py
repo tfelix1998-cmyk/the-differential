@@ -1370,14 +1370,32 @@ if st.session_state.get("gen_errors"):
         st.error(f"⚠️ Generation issue → {err}")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_dash, tab_viva, tab_mcq, tab_anki, tab_mock, tab_psa, tab_gsse, tab_uq, tab_library, tab_proc, tab_help = st.tabs(
-    ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam", "💊  PSA", "🧠  GSSE", "🎓  UQ", "📚  Library", "🩺  Procedures", "❓  How to use"]
-)
+_NAV = ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam",
+        "💊  PSA", "🧠  GSSE", "🎓  UQ", "📚  Library", "🩺  Procedures", "❓  How to use"]
+# PERF: st.tabs runs the body of ALL tabs on every rerun. With 11 heavy tabs
+# (three quiz modules + dashboards + Supabase-backed Library/Procedures), a
+# single Next/Prev click re-ran everything — including blocking Supabase reads
+# in tabs you weren't even looking at. A radio nav renders ONLY the active
+# section, so each rerun does the work of one tab instead of eleven.
+_view = st.radio("Section", _NAV, horizontal=True,
+                 label_visibility="collapsed", key="_active_view")
+
+tab_dash    = _view == _NAV[0]
+tab_viva    = _view == _NAV[1]
+tab_mcq     = _view == _NAV[2]
+tab_anki    = _view == _NAV[3]
+tab_mock    = _view == _NAV[4]
+tab_psa     = _view == _NAV[5]
+tab_gsse    = _view == _NAV[6]
+tab_uq      = _view == _NAV[7]
+tab_library = _view == _NAV[8]
+tab_proc    = _view == _NAV[9]
+tab_help    = _view == _NAV[10]
 
 # ═════════════════════════════════════════════════════════════════════════════
 # UQ TAB — UQ Critical Care Module + Orthopaedic Trauma Framework
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_uq:
+if tab_uq:
     render_uq(
         persist_get=uq_load_progress,
         persist_set=uq_save_progress,
@@ -1387,13 +1405,13 @@ with tab_uq:
 # ═════════════════════════════════════════════════════════════════════════════
 # PSA TAB
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_psa:
+if tab_psa:
     render_psa(c, conn, SUPABASE_ENABLED, supabase)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # GSSE TAB
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_gsse:
+if tab_gsse:
     render_gsse(
         persist_get=gsse_load_progress,
         persist_set=gsse_save_progress,
@@ -1403,7 +1421,7 @@ with tab_gsse:
 # ═════════════════════════════════════════════════════════════════════════════
 # DASHBOARD TAB
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_dash:
+if tab_dash:
     du = st.session_state.get("current_user", "Terry")
     st.markdown(f"### Study Dashboard — {du}")
 
@@ -1578,7 +1596,7 @@ with tab_dash:
 # ═════════════════════════════════════════════════════════════════════════════
 # VIVA TAB
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_viva:
+if tab_viva:
     st.markdown("### Viva Voce")
 
     # ── Saved viva banks: baked-in banks AND anything you've generated ──
@@ -1757,7 +1775,7 @@ with tab_viva:
 # ═════════════════════════════════════════════════════════════════════════════
 # MCQ TAB
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_mcq:
+if tab_mcq:
     # ── Load a saved MCQ bank directly (categorised) ──
     mcq_topics = list_topics_with_mcqs()
     if mcq_topics and not st.session_state.get("mcqs"):
@@ -2144,7 +2162,7 @@ with tab_mcq:
 # ═════════════════════════════════════════════════════════════════════════════
 # ANKI TAB
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_anki:
+if tab_anki:
     st.markdown("### 🗂️ Anki Cloze-Deletion Flashcards")
 
     if not pdf_ready:
@@ -2183,7 +2201,7 @@ with tab_anki:
 # ═════════════════════════════════════════════════════════════════════════════
 # MOCK EXAM TAB — build a custom exam from your saved topic pool (no API calls)
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_mock:
+if tab_mock:
     st.markdown("### 🎯 Mock Exam Builder")
     st.caption("Assemble a custom exam from topics you've already generated. No API calls — instant and free.")
 
@@ -2503,7 +2521,7 @@ with tab_mock:
 # ═════════════════════════════════════════════════════════════════════════════
 # LIBRARY TAB — shared text-notes library; read + generate questions from notes
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_library:
+if tab_library:
     st.markdown("### 📚 Library")
     st.caption("Shared notes for Terry & Alex. Upload extracts the text (the original PDF stays on your device). No API cost to store or read.")
 
@@ -2651,7 +2669,7 @@ with tab_library:
 #   Phase 1: tick off the steps as you run through them
 #   Phase 2: write the steps from memory, then reveal and compare
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_proc:
+if tab_proc:
     st.markdown("### 🩺 Procedural Skills")
     st.caption("Practise OSCE procedures two ways: tick-the-steps, or write them from memory and compare. "
                "Checklists are study aids — always defer to your local clinical guidelines and supervisor.")
@@ -2747,7 +2765,7 @@ with tab_proc:
 # ═════════════════════════════════════════════════════════════════════════════
 # HELP TAB — how the site works, for Terry, Alex, or anyone new
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_help:
+if tab_help:
     st.markdown("### ❓ How to use The Differential")
     st.caption("A quick guide for anyone using this study tool.")
 
