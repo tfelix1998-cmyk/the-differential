@@ -320,6 +320,20 @@ def get_db():
 conn = get_db()
 c = conn.cursor()
 
+
+def _scalar(sql, params=()):
+    """Single-value read (e.g. COUNT(*)) on a PRIVATE cursor.
+
+    The module-level cursor `c` is shared across Streamlit's rerun threads, so a
+    count query can occasionally pick up another query's result set and return
+    None — which then crashes on [0]. A fresh cursor per call plus a None-guard
+    makes these dashboard reads safe."""
+    try:
+        row = conn.cursor().execute(sql, params).fetchone()
+        return row[0] if row else 0
+    except Exception:
+        return 0
+
 # ── Supabase (permanent cloud storage for the generated-content cache) ─────────
 # If Supabase is configured and reachable, the cache lives there permanently and
 # survives app restarts. If anything is missing or fails, we silently fall back
@@ -1377,8 +1391,16 @@ _NAV = ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯 
 # single Next/Prev click re-ran everything — including blocking Supabase reads
 # in tabs you weren't even looking at. A radio nav renders ONLY the active
 # section, so each rerun does the work of one tab instead of eleven.
-_view = st.radio("Section", _NAV, horizontal=True,
-                 label_visibility="collapsed", key="_active_view")
+# Horizontal, tab-like nav that renders ONLY the active section (unlike st.tabs,
+# which runs all 11 every rerun). segmented_control looks like a tab strip;
+# fall back to a horizontal radio on older Streamlit.
+try:
+    _view = st.segmented_control("Section", _NAV, default=_NAV[0],
+                                 label_visibility="collapsed",
+                                 key="_active_view") or _NAV[0]
+except Exception:
+    _view = st.radio("Section", _NAV, horizontal=True,
+                     label_visibility="collapsed", key="_active_view")
 
 tab_dash    = _view == _NAV[0]
 tab_viva    = _view == _NAV[1]
@@ -1425,13 +1447,13 @@ if tab_dash:
     du = st.session_state.get("current_user", "Terry")
     st.markdown(f"### Study Dashboard — {du}")
 
-    total_mcqs   = c.execute("SELECT COUNT(*) FROM mcq_attempts WHERE user=?", (du,)).fetchone()[0]
-    correct_mcqs = c.execute("SELECT COUNT(*) FROM mcq_attempts WHERE is_correct=1 AND user=?", (du,)).fetchone()[0]
+    total_mcqs   = _scalar("SELECT COUNT(*) FROM mcq_attempts WHERE user=?", (du,))
+    correct_mcqs = _scalar("SELECT COUNT(*) FROM mcq_attempts WHERE is_correct=1 AND user=?", (du,))
     accuracy     = (correct_mcqs / total_mcqs * 100) if total_mcqs else 0
-    total_viva   = c.execute("SELECT COUNT(*) FROM viva_reviews WHERE user=?", (du,)).fetchone()[0]
-    easy_n  = c.execute("SELECT COUNT(*) FROM viva_reviews WHERE confidence=3 AND user=?", (du,)).fetchone()[0]
-    good_n  = c.execute("SELECT COUNT(*) FROM viva_reviews WHERE confidence=2 AND user=?", (du,)).fetchone()[0]
-    hard_n  = c.execute("SELECT COUNT(*) FROM viva_reviews WHERE confidence=1 AND user=?", (du,)).fetchone()[0]
+    total_viva   = _scalar("SELECT COUNT(*) FROM viva_reviews WHERE user=?", (du,))
+    easy_n  = _scalar("SELECT COUNT(*) FROM viva_reviews WHERE confidence=3 AND user=?", (du,))
+    good_n  = _scalar("SELECT COUNT(*) FROM viva_reviews WHERE confidence=2 AND user=?", (du,))
+    hard_n  = _scalar("SELECT COUNT(*) FROM viva_reviews WHERE confidence=1 AND user=?", (du,))
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("MCQs Attempted",      total_mcqs)
