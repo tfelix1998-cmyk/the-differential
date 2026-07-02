@@ -637,17 +637,52 @@ def _dashboard_view(qindex, user):
 # View: Practice (SBA / MCQ by subject)
 # ---------------------------------------------------------------------------
 
+def _q_type_label(q):
+    """Human label for a question's type, used by the practice filter."""
+    t = q.get("type")
+    if t == "X":
+        return "True / False"
+    if t == "SPOT":
+        return "Spot"
+    if t == "B":
+        return "Matching"
+    if "statement-reason" in (q.get("tags") or []):
+        return "Statement & Reason"
+    return "Single Best Answer"
+
+
+_TYPE_ORDER = ["Single Best Answer", "True / False", "Statement & Reason", "Matching", "Spot"]
+
+
 def _practice_view(qindex):
     st.markdown("### GSSE Question Bank")
-    st.caption("Practice questions by subject — single-best-answer, true/false and spots.")
+    st.caption("Practice questions by subject — pick the question types you want to drill.")
 
     by_sci = _questions_by_science(qindex)
-    tabs = st.tabs([f"{GSSE_DOMAINS[s]['name']} ({len(by_sci[s])})" for s in SCIENCE_ORDER])
+
+    # ── Question-type filter (e.g. only SBA, or only T/F + S/R) ──
+    all_qs = [q for s in SCIENCE_ORDER for q in by_sci[s]]
+    present = [lbl for lbl in _TYPE_ORDER if any(_q_type_label(q) == lbl for q in all_qs)]
+    counts = {lbl: sum(1 for q in all_qs if _q_type_label(q) == lbl) for lbl in present}
+    chosen = st.multiselect(
+        "Question types",
+        options=present,
+        default=present,
+        format_func=lambda l: f"{l} ({counts[l]})",
+        key="_gsse_type_filter",
+        help="Deselect a type to hide it. Leave one selected to drill just that format.",
+    )
+    chosen = set(chosen) if chosen else set(present)
+
+    def _keep(qs):
+        return [q for q in qs if _q_type_label(q) in chosen]
+
+    tabs = st.tabs([f"{GSSE_DOMAINS[s]['name']} ({len(_keep(by_sci[s]))})" for s in SCIENCE_ORDER])
     for tab, sci in zip(tabs, SCIENCE_ORDER):
         with tab:
-            qs = by_sci[sci]
+            qs = _keep(by_sci[sci])
             if not qs:
-                st.info("No questions here yet.")
+                st.info("No questions of the selected type(s) here yet.")
                 continue
             answered = sum(
                 1 for q in qs
