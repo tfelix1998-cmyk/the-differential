@@ -43,14 +43,24 @@ def _load_content():
         from builtin_questions import BUILTIN_VIVA
     except Exception:
         BUILTIN_VIVA = {}
+    # EMED bank (Broad Topic - Pathology) - added to uq module
+    try:
+        from emed_questions import EMED_BANKS
+    except Exception:
+        EMED_BANKS = {}
 
     out = {}
     for t in ucfg.UQ_TOPICS:
-        mcqs = IMPORTED_BANKS.get(t["mcq_bank"], []) if t["mcq_bank"] else []
+        # Look up MCQ bank in whichever source has it (IMPORTED for original UQ, EMED for new topics)
+        mcqs = []
+        if t["mcq_bank"]:
+            mcqs = IMPORTED_BANKS.get(t["mcq_bank"]) or EMED_BANKS.get(t["mcq_bank"]) or []
         if t["viva_source"] == "builtin":
             viva = BUILTIN_VIVA.get(t["viva_bank"], []) if t["viva_bank"] else []
-        else:
+        elif t["viva_source"] == "imported":
             viva = IMPORTED_VIVA.get(t["viva_bank"], []) if t["viva_bank"] else []
+        else:
+            viva = []  # EMED topics are MCQ-only
         out[t["id"]] = {"mcq": mcqs, "viva": viva, "name": t["name"], "section": t["section"]}
     return out
 
@@ -592,10 +602,10 @@ def _topics_view(content):
         sort_by = st.selectbox("Sort by", ["Order", "Name (A–Z)", "Progress", "% Correct"],
                                 key=f"_uq_topic_sort_{active_section or 'all'}", label_visibility="collapsed")
     with c_filter:
-        type_pick = st.selectbox("Question type",
-                                  ["All question types", "MCQ only", "MCQ + Viva", "Viva only"],
-                                  key=f"_uq_topic_typefilter_{active_section or 'all'}",
-                                  label_visibility="collapsed")
+        type_filter = st.multiselect("Question type", ["MCQ only", "MCQ + Viva", "Viva only"],
+                                      key=f"_uq_topic_typefilter_{active_section or 'all'}",
+                                      placeholder="Filter by question type",
+                                      label_visibility="collapsed")
     search_norm = search.strip().lower() if search else ""
 
     # ── Build rows ──
@@ -612,8 +622,8 @@ def _topics_view(content):
 
     if search_norm:
         rows = [r for r in rows if search_norm in r["topic"]["name"].lower()]
-    if type_pick != "All question types":
-        rows = [r for r in rows if r["kind"] == type_pick]
+    if type_filter:
+        rows = [r for r in rows if r["kind"] in type_filter]
 
     if sort_by == "Name (A–Z)":
         rows.sort(key=lambda r: r["topic"]["name"])
