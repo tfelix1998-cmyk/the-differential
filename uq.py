@@ -267,9 +267,16 @@ def _inject_q_styles():
     text-transform: uppercase; color: #9ca3af; margin-bottom: 4px;
 }
 .uq-stem {
-    font-size: 1.05rem; font-weight: 700; color: #111827;
-    margin-bottom: 18px; line-height: 1.45;
+    font-size: 1.02rem; font-weight: 400; color: #1f2937;
+    margin-bottom: 18px; line-height: 1.55;
 }
+.uq-stem p { margin: 0 0 10px; }
+.uq-stem p:last-child { margin-bottom: 0; font-weight: 600; color: #111827; }
+.uq-stem-list {
+    margin: 4px 0 12px; padding: 10px 14px 10px 28px;
+    background: #f8fafc; border-radius: 8px; list-style: disc;
+}
+.uq-stem-list li { margin: 2px 0; line-height: 1.5; }
 .uq-result-ok  { color: #059669; font-weight: 600; }
 .uq-result-bad { color: #dc2626; font-weight: 600; }
 .uq-expl { font-size: 0.85rem; color: #6b7280; margin-top: 4px; line-height: 1.5; }
@@ -292,6 +299,42 @@ def _inject_q_styles():
 # Question renderers — each wrapped in @st.fragment so answering one question
 # never reruns the rest of the app.
 # ---------------------------------------------------------------------------
+
+import re as _re
+
+_OPT_TAIL = _re.compile(
+    r'(?:\s+(?:ox|ax|om|oe|ne|wm|nw|NW%|[A-Za-z]?%|\d+x|[A-Za-z]\d))+\s*$'
+    r'|\s*[™©®%＋+]+\s*$'
+)
+
+
+def _clean_opt(o):
+    """Defensive: strip trailing OCR marker junk from an option at render time,
+    so even un-cleaned banks display tidily. Leaves the leading 'A) ' intact."""
+    prev = None
+    while prev != o:
+        prev = o
+        o = _OPT_TAIL.sub('', o).rstrip(' .,')
+    return o
+
+
+def _stem_html(text):
+    """Convert a cleaned stem (plain text with blank-line paragraphs and
+    '- ' bullet lines) into safe HTML, so lab-value lists render as a real
+    bulleted list inside the styled stem div instead of a run-on with
+    literal asterisks."""
+    import html
+    blocks = _re.split(r'\n\s*\n', (text or "").strip())
+    out = []
+    for blk in blocks:
+        lines = [l.strip() for l in blk.splitlines() if l.strip()]
+        if lines and all(l.startswith(("- ", "• ")) for l in lines):
+            items = "".join(f"<li>{html.escape(l[2:].strip())}</li>" for l in lines)
+            out.append(f'<ul class="uq-stem-list">{items}</ul>')
+        else:
+            out.append("<p>" + html.escape(" ".join(lines)) + "</p>")
+    return "".join(out)
+
 
 def _uq_opt_row_html(text, state):
     """state: 'correct' | 'wrong' | 'dim' | None"""
@@ -331,9 +374,10 @@ def _mcq_card(topic_id, mcq, number, key):
             st.image(img, use_container_width=True)
         except Exception:
             st.caption("(image could not be loaded)")
-    st.markdown(f'<div class="uq-stem">{mcq["question_text"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="uq-stem">{_stem_html(mcq["question_text"])}</div>',
+                unsafe_allow_html=True)
 
-    options = mcq.get("options") or []
+    options = [_clean_opt(o) for o in (mcq.get("options") or [])]
     answered_key = f"{key}_answered"
     correct_letter = (mcq.get("correct_answer_letter") or "").strip().upper()
 
@@ -557,7 +601,7 @@ def _modules_view(content):
                 st.progress(min(max(comp, 0.0), 1.0))
                 st.markdown(f"""
                 <div style="display:flex; justify-content:space-between; color:#6B7290;
-                            font-size:0.78rem; margin:8px 0 4px;">
+                            font-size:0.78rem; margin:10px 0 14px;">
                   <span>📝 {n_mcq} MCQ</span>
                   <span>🗣️ {n_viva} viva</span>
                   <span>🗂️ {len(topics)} topics</span>
