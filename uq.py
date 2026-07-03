@@ -264,7 +264,7 @@ def _inject_q_styles():
 <style>
 .uq-type-label {
     font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em;
-    text-transform: uppercase; color: #9ca3af; margin-bottom: 4px;
+    text-transform: uppercase; color: #9ca3af; margin-bottom: 14px;
 }
 .uq-stem {
     font-size: 1.02rem; font-weight: 400; color: #1f2937;
