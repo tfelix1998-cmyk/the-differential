@@ -359,6 +359,24 @@ def get_supabase():
 supabase, SUPABASE_ENABLED = get_supabase()
 
 
+import threading as _threading
+
+def _async_supabase_upsert(table, user, payload_json):
+    """Fire-and-forget upsert so the UI never blocks on the (Cape Town ->
+    Supabase) round-trip. SQLite already holds a synchronous copy, and progress
+    is cumulative, so a dropped async write self-heals on the next save.
+    payload_json is a JSON string snapshot (avoids racing the live dict)."""
+    if not (SUPABASE_ENABLED and supabase is not None):
+        return
+    def _work():
+        try:
+            supabase.table(table).upsert(
+                {"user": user, "data": json.loads(payload_json)}).execute()
+        except Exception:
+            pass
+    _threading.Thread(target=_work, daemon=True).start()
+
+
 # ── GSSE progress persistence ──────────────────────────────────────────────────
 # Prefers Supabase (cloud, survives restarts); always writes SQLite as a fallback.
 # Progress is one JSON blob per user, so each load/save is a single read/write.
@@ -381,21 +399,18 @@ def gsse_load_progress(user):
 
 def gsse_save_progress(progress, user):
     # SQLite (always)
+    payload = json.dumps(progress)
     try:
         c.execute(
             "INSERT INTO gsse_progress (user, data) VALUES (?, ?) "
             "ON CONFLICT(user) DO UPDATE SET data=excluded.data, timestamp=CURRENT_TIMESTAMP",
-            (user, json.dumps(progress)),
+            (user, payload),
         )
         conn.commit()
     except Exception:
         pass
-    # Supabase (if enabled) — jsonb column takes the dict directly
-    if SUPABASE_ENABLED and supabase is not None:
-        try:
-            supabase.table("gsse_progress").upsert({"user": user, "data": progress}).execute()
-        except Exception:
-            pass
+    # Supabase — non-blocking (see _async_supabase_upsert)
+    _async_supabase_upsert("gsse_progress", user, payload)
 
 
 # ── UQ progress persistence ─────────────────────────────────────────────────
@@ -418,20 +433,17 @@ def uq_load_progress(user):
 
 
 def uq_save_progress(progress, user):
+    payload = json.dumps(progress)
     try:
         c.execute(
             "INSERT INTO uq_progress (user, data) VALUES (?, ?) "
             "ON CONFLICT(user) DO UPDATE SET data=excluded.data, timestamp=CURRENT_TIMESTAMP",
-            (user, json.dumps(progress)),
+            (user, payload),
         )
         conn.commit()
     except Exception:
         pass
-    if SUPABASE_ENABLED and supabase is not None:
-        try:
-            supabase.table("uq_progress").upsert({"user": user, "data": progress}).execute()
-        except Exception:
-            pass
+    _async_supabase_upsert("uq_progress", user, payload)
 
 
 def doc_fingerprint(pdf_text):

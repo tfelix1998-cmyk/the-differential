@@ -277,7 +277,7 @@ def _inject_q_styles():
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: #9ca3af;
-    margin-bottom: 4px;
+    margin-bottom: 12px;
 }
 /* ---- question stem ---- */
 .q-stem {
@@ -316,6 +316,12 @@ def _inject_q_styles():
     border: none;
     border-top: 1px solid #eef0f5;
     margin: 10px 0;
+}
+.ai-expl-badge {
+    display: inline-block; margin: 0 8px 4px 0; padding: 2px 8px;
+    font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em;
+    color: #6d28d9; background: #f3e8ff; border-radius: 999px;
+    vertical-align: middle;
 }
 /* ---- result badges ---- */
 .q-result-ok  { color: #059669; font-weight: 600; }
@@ -429,7 +435,10 @@ def _render_typeX(q, key):
                 icon = "✅" if ok else ("⬜" if picks[i] is None else "❌")
                 st.markdown(f"{icon} <strong>{stmt['text']}</strong> — <em>{truth}</em>", unsafe_allow_html=True)
                 if stmt.get("explanation"):
-                    st.markdown(f'<div class="q-expl">{stmt["explanation"]}</div>', unsafe_allow_html=True)
+                    badge = ('<span class="ai-expl-badge">✨ AI-generated · verify</span>'
+                             if stmt.get("explanation_ai") else "")
+                    st.markdown(f'<div class="q-expl">{badge}{stmt["explanation"]}</div>',
+                                unsafe_allow_html=True)
             st.info(f"Score: {correct}/{len(stmts)}")
             if q.get("explanation") and q["explanation"] != "See individual statement explanations above.":
                 _explanation_html(q["explanation"])
