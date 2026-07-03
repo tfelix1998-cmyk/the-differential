@@ -42,6 +42,23 @@ def blanks(q):
     return [s for s in (q.get("statements") or [])
             if not (s.get("explanation") and str(s["explanation"]).strip())]
 
+def generate(model, prompt, tries=6):
+    """Generate with backoff. Free-tier throttling (429/quota) waits and retries
+    instead of skipping the statement."""
+    for attempt in range(tries):
+        try:
+            r = model.generate_content(prompt)
+            return (r.text or "").strip()
+        except Exception as e:
+            msg = str(e).lower()
+            transient = any(k in msg for k in ("429", "rate", "quota", "resource", "exhaust", "503", "unavailable"))
+            if transient and attempt < tries - 1:
+                wait = min(60, 5 * (attempt + 1))
+                print(f"    throttled, waiting {wait}s...")
+                time.sleep(wait)
+                continue
+            raise
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
@@ -73,8 +90,7 @@ def main():
             prompt = (f"Topic: {topic}\nStatement: \"{full}\"\n"
                       f"Correct answer: {verdict}\n\nExplain why in 1-3 sentences.")
             try:
-                r = model.generate_content(prompt)
-                text = (r.text or "").strip()
+                text = generate(model, prompt)
                 if len(text) < 15:
                     raise ValueError("empty")
                 s["explanation"] = text
