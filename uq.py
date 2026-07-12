@@ -48,6 +48,66 @@ def _load_content():
         from emed_questions import EMED_BANKS
     except Exception:
         EMED_BANKS = {}
+    # Extra EMED banks (extracted practice questions). Merge by CONCATENATING
+    # question lists — "Haematology - Anaemia" exists in both files, and a plain
+    # dict update would silently drop the original questions.
+    try:
+        from emed_questions_extra import EMED_BANKS_EXTRA
+        EMED_BANKS = dict(EMED_BANKS)
+        for _k, _v in EMED_BANKS_EXTRA.items():
+            EMED_BANKS[_k] = list(EMED_BANKS.get(_k, [])) + list(_v)
+    except Exception:
+        pass
+    # Rewritten stems for image-dependent questions. Applied as an override map
+    # so the 7.1 MB emed_questions.py never needs reopening.
+    try:
+        from emed_stem_overrides import STEM_OVERRIDES
+        try:
+            from emed_stem_overrides import ANSWER_OVERRIDES
+        except Exception:
+            ANSWER_OVERRIDES = {}
+        try:
+            from emed_stem_overrides import OPTION_OVERRIDES
+        except Exception:
+            OPTION_OVERRIDES = {}
+        EMED_BANKS = dict(EMED_BANKS)
+        for _bank in set(STEM_OVERRIDES) | set(ANSWER_OVERRIDES) | set(OPTION_OVERRIDES):
+            if _bank not in EMED_BANKS:
+                continue
+            _qs = [dict(q) for q in EMED_BANKS[_bank]]
+            for _i, _stem in STEM_OVERRIDES.get(_bank, {}).items():
+                _i = int(_i)
+                if 0 <= _i < len(_qs):
+                    _qs[_i]["question_text"] = _stem
+                    _qs[_i]["image_url"] = ""
+            # Answer-key corrections: two questions stored an answer that
+            # contradicted their own explanation (OCR mis-detection).
+            for _i, _letter in ANSWER_OVERRIDES.get(_bank, {}).items():
+                _i = int(_i)
+                if 0 <= _i < len(_qs):
+                    _qs[_i]["correct_answer_letter"] = _letter
+            # Option repair: one question's options were shifted, with
+            # explanation text spilled into the last two slots.
+            for _i, _opts in OPTION_OVERRIDES.get(_bank, {}).items():
+                _i = int(_i)
+                if 0 <= _i < len(_qs):
+                    _qs[_i]["options"] = list(_opts)
+            EMED_BANKS[_bank] = _qs
+    except Exception:
+        pass
+    # Drop unservable questions (empty stem / blank options / no explanation).
+    # An unanswerable question is worse than no question.
+    try:
+        from emed_stem_overrides import QUARANTINE
+        EMED_BANKS = dict(EMED_BANKS)
+        for _bank, _drop in QUARANTINE.items():
+            if _bank not in EMED_BANKS:
+                continue
+            _bad = set(int(x) for x in _drop)
+            EMED_BANKS[_bank] = [q for j, q in enumerate(EMED_BANKS[_bank])
+                                 if j not in _bad]
+    except Exception:
+        pass
 
     out = {}
     for t in ucfg.UQ_TOPICS:
@@ -260,6 +320,11 @@ def _go(view, topic_id=None):
 def _inject_q_styles():
     if st.session_state.get("_uq_styles_injected"):
         return
+    try:
+        from stem_format import LAB_TABLE_CSS
+        st.markdown(LAB_TABLE_CSS, unsafe_allow_html=True)
+    except Exception:
+        pass
     st.markdown("""
 <style>
 .uq-type-label {
@@ -290,6 +355,49 @@ def _inject_q_styles():
 }
 .uq-viva-card ul { margin: 0; padding-left: 18px; }
 .uq-viva-card li { margin: 4px 0; line-height: 1.5; }
+
+/* ---------------------------------------------------------------------
+   UNANSWERED options.
+   Previously these rendered as a bare st.radio — flush, unpadded, no gap —
+   so the state you actually read the question in was the cramped one, while
+   the roomy .opt-row cards only appeared AFTER submitting. This styles the
+   radio to match .opt-row so spacing is consistent before and after.
+   --------------------------------------------------------------------- */
+div[role="radiogroup"] {
+    display: flex; flex-direction: column; gap: 10px;
+    margin: 0 0 18px 0;
+}
+div[role="radiogroup"] > label {
+    display: flex; align-items: flex-start; gap: 14px;
+    background: #FFFFFF; border: 1.5px solid #E2E6F5;
+    border-radius: 14px; padding: 16px 20px; margin: 0;
+    cursor: pointer; transition: border-color .15s, background .15s;
+    color: #1E2233; font-size: 0.97rem; line-height: 1.5;
+    box-shadow: 0 1px 3px rgba(30,34,51,0.05);
+}
+div[role="radiogroup"] > label:hover {
+    border-color: #5B62F2; background: #F7F8FF;
+}
+/* let long option text wrap instead of being clipped to one line */
+div[role="radiogroup"] > label > div:last-child { white-space: normal; }
+
+/* Answered rows: top-align so wrapped options don't push the pill off-centre */
+.opt-row { align-items: flex-start !important; }
+
+/* Explanation panel: real paragraph rhythm instead of one wall of text */
+.explanation-box { margin-top: 18px; }
+.explanation-box h4 {
+    margin: 0 0 12px !important; font-size: 0.95rem; font-weight: 600;
+}
+.explanation-body p {
+    margin: 0 0 12px; font-size: 0.93rem; line-height: 1.65; color: #1E2233;
+}
+.explanation-body p:last-child { margin-bottom: 0; }
+
+@media (max-width: 640px) {
+    div[role="radiogroup"] > label { padding: 14px 16px; }
+    .explanation-box { padding: 16px 18px; }
+}
 </style>
 """, unsafe_allow_html=True)
     st.session_state["_uq_styles_injected"] = True
@@ -319,21 +427,25 @@ def _clean_opt(o):
 
 
 def _stem_html(text):
-    """Convert a cleaned stem (plain text with blank-line paragraphs and
-    '- ' bullet lines) into safe HTML, so lab-value lists render as a real
-    bulleted list inside the styled stem div instead of a run-on with
-    literal asterisks."""
-    import html
-    blocks = _re.split(r'\n\s*\n', (text or "").strip())
-    out = []
-    for blk in blocks:
-        lines = [l.strip() for l in blk.splitlines() if l.strip()]
-        if lines and all(l.startswith(("- ", "• ")) for l in lines):
-            items = "".join(f"<li>{html.escape(l[2:].strip())}</li>" for l in lines)
-            out.append(f'<ul class="uq-stem-list">{items}</ul>')
-        else:
-            out.append("<p>" + html.escape(" ".join(lines)) + "</p>")
-    return "".join(out)
+    """Delegate to the shared formatter (stem_format.py) so every module —
+    UQ, GSSE, PSA — renders stems the same way, with lab-value runs lifted out
+    of the prose into a real table. Falls back to the old inline renderer if
+    the module is missing."""
+    try:
+        from stem_format import stem_html as _shared
+        return _shared(text)
+    except Exception:
+        import html
+        blocks = _re.split(r'\n\s*\n', (text or "").strip())
+        out = []
+        for blk in blocks:
+            lines = [l.strip() for l in blk.splitlines() if l.strip()]
+            if lines and all(l.startswith(("- ", "• ")) for l in lines):
+                items = "".join(f"<li>{html.escape(l[2:].strip())}</li>" for l in lines)
+                out.append(f'<ul class="uq-stem-list">{items}</ul>')
+            else:
+                out.append("<p>" + html.escape(" ".join(lines)) + "</p>")
+        return "".join(out)
 
 
 def _uq_opt_row_html(text, state):
@@ -342,8 +454,8 @@ def _uq_opt_row_html(text, state):
     trailing = ""
     if state == "correct":
         cls += " opt-correct"
-        trailing = ('<span style="margin-left:auto;font-weight:700;color:#FFFFFF;'
-                    'background:#4CAF6D;padding:4px 12px;border-radius:20px;font-size:0.82rem;">Correct</span>')
+        # NOTE: no trailing span here — app.py's `.opt-correct::after` already
+        # renders the "Correct" pill. Adding one here printed it twice.
     elif state == "wrong":
         cls += " opt-wrong"
         trailing = ('<span style="margin-left:auto;font-weight:700;color:#FFFFFF;'
@@ -353,9 +465,26 @@ def _uq_opt_row_html(text, state):
     return f'<div class="{cls}"><span>{text}</span>{trailing}</div>'
 
 
+def _explanation_paragraphs(text):
+    """Split explanation prose into real <p> blocks.
+
+    Bank explanations arrive as one long run of text. Dumping that into a single
+    <div> is what makes the answer panel a wall with no spacing. Split on blank
+    lines (falling back to single newlines) so each idea gets its own block.
+    """
+    text = (text or "").strip()
+    if not text:
+        return ""
+    chunks = _re.split(r"\n\s*\n", text)
+    if len(chunks) == 1:
+        chunks = [c for c in text.split("\n") if c.strip()]
+    return "".join(f"<p>{html.escape(c.strip())}</p>" for c in chunks if c.strip())
+
+
 def _uq_explanation_html(explanation, key_learning_points=None):
     if explanation:
-        st.markdown(f'<div class="explanation-box"><h4>Explanation</h4><div>{explanation}</div></div>',
+        st.markdown(f'<div class="explanation-box"><h4>Explanation</h4>'
+                    f'<div class="explanation-body">{_explanation_paragraphs(explanation)}</div></div>',
                      unsafe_allow_html=True)
     if key_learning_points:
         st.markdown(f'<div class="uq-klp">🎯 {key_learning_points}</div>', unsafe_allow_html=True)

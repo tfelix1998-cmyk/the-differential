@@ -268,6 +268,14 @@ def _option_letter(opt):
 def _inject_q_styles():
     if st.session_state.get("_gsse_styles_injected"):
         return
+    # Shared question CSS (option cards, explanation rhythm, lab tables). This
+    # previously lived only inside uq.py, so GSSE never received it — its
+    # options rendered flush and unpadded before answering.
+    try:
+        from stem_format import QUESTION_CSS
+        st.markdown(QUESTION_CSS, unsafe_allow_html=True)
+    except Exception:
+        pass
     st.markdown("""
 <style>
 /* ---- type label above question ---- */
@@ -338,8 +346,8 @@ def _opt_row_html(text, state):
     trailing = ""
     if state == "correct":
         cls += " opt-correct"
-        trailing = ('<span style="margin-left:auto;font-weight:700;color:#FFFFFF;'
-                    'background:#4CAF6D;padding:4px 12px;border-radius:20px;font-size:0.82rem;">Correct</span>')
+        # NOTE: no trailing span — app.py's `.opt-correct::after` already renders
+        # the "Correct" pill. Adding one here printed it twice.
     elif state == "wrong":
         cls += " opt-wrong"
         trailing = ('<span style="margin-left:auto;font-weight:700;color:#FFFFFF;'
@@ -352,7 +360,12 @@ def _opt_row_html(text, state):
 def _explanation_html(explanation, tags=None):
     if not explanation:
         return
-    st.markdown(f'<div class="explanation-box"><h4>Explanation</h4><div>{explanation}</div></div>',
+    try:
+        from stem_format import explanation_paragraphs
+        body = f'<div class="explanation-body">{explanation_paragraphs(explanation)}</div>'
+    except Exception:
+        body = f'<div>{explanation}</div>'
+    st.markdown(f'<div class="explanation-box"><h4>Explanation</h4>{body}</div>',
                 unsafe_allow_html=True)
     if tags:
         pills = "".join(f'<span class="tag-pill">{t}</span>' for t in tags)

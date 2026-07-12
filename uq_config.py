@@ -220,6 +220,23 @@ _EMED_BANKS = [
     ("EMED", "Vascular - Abdominal Aortic Aneurysm"),
     ("EMED", "Vascular - Peripheral Arterial Disease"),
     ("EMED", "Vascular - General Vascular"),
+
+    # --- added: extracted practice-question banks (562 questions) ---
+    ("EMED", "Geriatrics - Geriatric Pharmacology"),
+    ("EMED", "Haematology - Iron Metabolism"),
+    ("EMED", "Haematology - Transfusion Medicine"),
+    ("EMED", "Infectious Disease - Antibiotic Resistance"),
+    ("EMED", "Intensive Care - ICU"),
+    ("EMED", "Palliative Care - Palliative Medications"),
+    ("EMED", "Pharmacology - General Pharmacology"),
+    ("EMED", "Pharmacology - Pharmacodynamics"),
+    ("EMED", "Pharmacology - Pharmacokinetics"),
+    ("EMED", "Renal - Acid-Base Balance"),
+    ("EMED", "Renal - Chronic Kidney Disease"),
+    ("EMED", "Renal - Renal Replacement Therapy"),
+    ("EMED", "Respiratory - Acute Respiratory Distress Syndrome"),
+    ("EMED", "Toxicology - Opioids"),
+    ("EMED", "Toxicology - Toxicology Treatments"),
 ]
 
 SECTION_ORDER = [

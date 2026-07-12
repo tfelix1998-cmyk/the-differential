@@ -196,11 +196,26 @@ def _stem_card(item):
     for key, head in (("case_presentation", "Case presentation"),
                       ("on_examination", "On examination"),
                       ("investigations", "Investigations")):
-        if stem.get(key):
-            blocks += (
-                f'<p style="margin:14px 0 2px 0;font-size:0.78rem;font-weight:700;color:{GOLD};">{head}</p>'
-                f'<p style="margin:0;font-size:0.98rem;line-height:1.7;color:{TXT};">{stem[key]}</p>'
-            )
+        if not stem.get(key):
+            continue
+        blocks += (
+            f'<p style="margin:14px 0 2px 0;font-size:0.78rem;font-weight:700;color:{GOLD};">{head}</p>'
+        )
+        body = None
+        if key == "case_presentation":
+            # PSA case text arrives as ONE long run with the sections buried in
+            # it ("...PMH: COPD... DH: salbutamol... O/E: HR 112... Ix: Na 140,
+            # K 4.2, urea 7.2..."). Split it into labelled blocks and lift the
+            # Ix values into a results table.
+            try:
+                from stem_format import psa_case_html
+                body = psa_case_html(stem[key])
+            except Exception:
+                body = None
+        if not body:
+            body = (f'<p style="margin:0;font-size:0.98rem;line-height:1.7;'
+                    f'color:{TXT};">{stem[key]}</p>')
+        blocks += body
     st.markdown(
         f'<div style="background:{CARD};border:1px solid {BORDER};border-radius:12px;'
         f'padding:22px 26px;margin:6px 0 12px 0;user-select:text;">'
@@ -717,6 +732,11 @@ def _landing(c, conn, user):
 
 # ── Public entry point ────────────────────────────────────────────────────────
 def render_psa(c, conn, SUPABASE_ENABLED=False, supabase=None):
+    try:
+        from stem_format import inject_question_css
+        inject_question_css(st)
+    except Exception:
+        pass
     _ensure_table(c, conn)
     user = st.session_state.get("current_user", "Terry")
     section = st.session_state.get("psa_section")
