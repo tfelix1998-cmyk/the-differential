@@ -232,7 +232,6 @@ _EMED_BANKS = [
     ("EMED", "Pharmacology - Pharmacodynamics"),
     ("EMED", "Pharmacology - Pharmacokinetics"),
     ("EMED", "Renal - Acid-Base Balance"),
-    ("EMED", "Renal - Chronic Kidney Disease"),
     ("EMED", "Renal - Renal Replacement Therapy"),
     ("EMED", "Respiratory - Acute Respiratory Distress Syndrome"),
     ("EMED", "Toxicology - Opioids"),
