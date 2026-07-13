@@ -245,6 +245,49 @@ hr { border-color: #E2E6F5 !important; }
 </style>
 """, unsafe_allow_html=True)
 
+# --- shared question formatting -------------------------------------------
+# app.py renders MCQs itself in Mock Exam / Review / Practice. Those paths never
+# went through stem_format, so their stems had no paragraph breaks, no lab
+# tables and no bolded lead-in, their explanations were one wall of text, and
+# their st.radio options were unstyled — i.e. the same question looked different
+# depending on which tab you opened it in. Route them all through the shared
+# renderer so every question in every module looks identical.
+try:
+    from stem_format import (QUESTION_CSS as _QCSS, stem_html as _stem_html,
+                             explanation_paragraphs as _expl_paras)
+    st.markdown(_QCSS, unsafe_allow_html=True)
+except Exception:
+    _stem_html = None
+    _expl_paras = None
+
+
+def fmt_stem(text):
+    """Stem -> HTML with paragraphs, lab tables and a bolded lead-in."""
+    if _stem_html:
+        try:
+            return _stem_html(text)
+        except Exception:
+            pass
+    import html as _h
+    return f"<p>{_h.escape(text or '')}</p>"
+
+
+def render_explanation(text):
+    """Explanation as spaced paragraphs, not a single markdown blob."""
+    if not text:
+        return
+    if _expl_paras:
+        try:
+            st.markdown(
+                f'<div class="explanation-box"><h4>Explanation</h4>'
+                f'<div class="explanation-body">{_expl_paras(text)}</div></div>',
+                unsafe_allow_html=True)
+            return
+        except Exception:
+            pass
+    st.markdown(f"**Explanation:** {text}")
+
+
 # ── Gemini ────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 if not GEMINI_API_KEY:
@@ -1978,8 +2021,8 @@ if tab_mcq:
                     f'padding:24px 28px;margin:12px 0 20px 0;user-select:text;cursor:text;">'
                     f'<span style="font-size:0.75rem;font-weight:700;color:#5B62F2;'
                     f'text-transform:uppercase;letter-spacing:0.08em;">Question {idx+1}</span>'
-                    f'<p style="margin:12px 0 0 0;font-size:1.02rem;line-height:1.75;color:#1E2233;">'
-                    f'{mcq["question_text"]}</p></div>',
+                    f'<div style="margin:12px 0 0 0;font-size:1.02rem;line-height:1.75;color:#1E2233;">'
+                    f'{fmt_stem(mcq["question_text"])}</div></div>',
                     unsafe_allow_html=True
                 )
 
@@ -2038,7 +2081,7 @@ if tab_mcq:
                         )
 
                     with st.expander("📖 Full explanation"):
-                        st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
+                        render_explanation(mcq.get('explanation',''))
                         if mcq.get("key_learning_points"):
                             st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
                         st.markdown("---")
@@ -2122,8 +2165,8 @@ if tab_mcq:
                     f'padding:20px 24px;margin-bottom:8px;user-select:text;cursor:text;">'
                     f'<span style="font-size:0.75rem;font-weight:700;color:#5B62F2;'
                     f'text-transform:uppercase;letter-spacing:0.08em;">Question {i+1}{status}</span>'
-                    f'<p style="margin:10px 0 0 0;font-size:1rem;line-height:1.7;color:#1E2233;">'
-                    f'{mcq["question_text"]}</p></div>',
+                    f'<div style="margin:10px 0 0 0;font-size:1rem;line-height:1.7;color:#1E2233;">'
+                    f'{fmt_stem(mcq["question_text"])}</div></div>',
                     unsafe_allow_html=True
                 )
 
@@ -2152,7 +2195,7 @@ if tab_mcq:
                         st.markdown(f'<div class="{rc}"><span class="{bc}">{ic}</span><span>{ot}</span></div>', unsafe_allow_html=True)
 
                     with st.expander("📖 Explanation"):
-                        st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
+                        render_explanation(mcq.get('explanation',''))
                         if mcq.get("key_learning_points"):
                             st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
                         st.markdown("---")
@@ -2497,7 +2540,7 @@ if tab_mock:
                                     unsafe_allow_html=True)
 
                     with st.expander("📖 Explanation"):
-                        st.markdown(f"**Explanation:** {mcq.get('explanation','')}")
+                        render_explanation(mcq.get('explanation',''))
                         if mcq.get("key_learning_points"):
                             st.markdown(f"**🎯 Key learning point:** {mcq.get('key_learning_points','')}")
                         st.markdown("---")

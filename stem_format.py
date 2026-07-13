@@ -173,8 +173,30 @@ def _extract_lab_block(text):
     return before, rows, tail
 
 
+def _split_lead_in(text):
+    """Split off the final interrogative SENTENCE as the bolded lead-in.
+
+    The lead-in is whatever full sentence ends the stem with a '?', taken whole
+    — not keyword-matched. "The effectiveness of imatinib relies on its ability
+    to prevent which of the following processes?" is one lead-in, not just the
+    "which..." clause. -> (body, lead_in or '')
+    """
+    text = text.rstrip()
+    if not text.endswith("?"):
+        return text, ""
+    # walk back to the start of the sentence containing the final '?'
+    cut = max(text.rfind(". "), text.rfind("? "), text.rfind("! "),
+              text.rfind("\n"))
+    lead = text[cut + 1:].strip() if cut != -1 else text
+    body = text[: cut + 1].strip() if cut != -1 else ""
+    # guardrails: a plausible question, and enough body left to be worth splitting
+    if len(body) < 40 or len(lead) < 12 or len(lead) > 260:
+        return text, ""
+    return body, lead
+
+
 def stem_html(text):
-    """Raw stem -> safe HTML, with any lab run rendered as a table."""
+    """Raw stem -> safe HTML: prose, any lab run as a table, lead-in bolded."""
     text = (text or "").strip()
     if not text:
         return ""
@@ -190,6 +212,12 @@ def stem_html(text):
             parts.append(_prose_html(tail, lead=True))
         return "".join(parts)
 
+    body, lead = _split_lead_in(text)
+    if lead:
+        return _prose_html(body) + _prose_html(lead, lead=True)
+    # No separable body: if the whole stem is a single question, bold it whole.
+    if text.rstrip().endswith("?") and text.count(".") <= 1:
+        return _prose_html(text, lead=True)
     return _prose_html(text)
 
 
@@ -264,6 +292,29 @@ div[role="radiogroup"] > label > div:last-child { white-space: normal; }
 .lab-ref  { color: #6B7290; white-space: nowrap; }
 .stem-lead { font-weight: 600; color: #111827; }
 
+/* ---- Question type label: uq.py uses .uq-type-label, gsse.py uses
+   .q-type-label. Both are defined here, identically, so every module shows the
+   same chip instead of one styled and one bare. ---- */
+.uq-type-label, .q-type-label {
+    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #9CA3AF; margin-bottom: 14px;
+}
+
+/* ---- Stem: same typography everywhere ---- */
+.uq-stem, .q-stem {
+    font-size: 1.02rem; font-weight: 400; color: #1F2937;
+    margin-bottom: 18px; line-height: 1.6;
+}
+.uq-stem p, .q-stem p { margin: 0 0 12px; }
+.uq-stem p:last-child, .q-stem p:last-child { margin-bottom: 0; }
+.uq-stem-list, .q-stem li { margin: 4px 0; }
+
+/* The lead-in ("Which one of the following...?") — always bold, always spaced. */
+.stem-lead {
+    font-weight: 600 !important; color: #111827 !important;
+    margin: 16px 0 0 0 !important;
+}
+
 /* ---- PSA case sections ---- */
 .psa-sec { margin: 14px 0 2px 0; font-size: 0.78rem; font-weight: 700;
            color: #8A6D3B; letter-spacing: .02em; }
@@ -283,11 +334,16 @@ LAB_TABLE_CSS = QUESTION_CSS
 
 
 def inject_question_css(st):
-    """Inject the shared question CSS once per session. Pass in streamlit."""
-    if st.session_state.get("_question_css_injected"):
-        return
+    """Inject the shared question CSS. Pass in streamlit.
+
+    NOTE: deliberately NOT guarded by a session_state "already injected" flag.
+    Streamlit rebuilds the element tree on every rerun, so a <style> block that
+    isn't re-emitted is REMOVED from the DOM. Worse, the question cards run
+    inside @st.fragment, so the style lands in the fragment's own slot — guard
+    it and the first question renders styled while every subsequent one renders
+    naked. Re-emitting a few KB of CSS each run is cheap and correct.
+    """
     st.markdown(QUESTION_CSS, unsafe_allow_html=True)
-    st.session_state["_question_css_injected"] = True
 
 
 # alias kept so existing callers keep working

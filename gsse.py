@@ -265,9 +265,24 @@ def _option_letter(opt):
 # ---------------------------------------------------------------------------
 
 # Shared CSS injected once per session
+def _stem_div(q):
+    """Shared stem renderer: paragraph rhythm, lab tables, bolded lead-in."""
+    try:
+        from stem_format import stem_html as _sh
+        return f'<div class="q-stem">{_sh(q.get("stem", ""))}</div>'
+    except Exception:
+        return f'<div class="q-stem">{q.get("stem", "")}</div>'
+
+
 def _inject_q_styles():
-    if st.session_state.get("_gsse_styles_injected"):
-        return
+    # NOT guarded: a <style> not re-emitted each rerun is dropped from the DOM,
+    # and question cards run in @st.fragment, so a guard left question 1 styled
+    # and the rest bare.
+    try:
+        from stem_format import QUESTION_CSS
+        st.markdown(QUESTION_CSS, unsafe_allow_html=True)
+    except Exception:
+        pass
     # Shared question CSS (option cards, explanation rhythm, lab tables). This
     # previously lived only inside uq.py, so GSSE never received it — its
     # options rendered flush and unpadded before answering.
@@ -337,7 +352,6 @@ def _inject_q_styles():
 .q-expl { font-size: 0.85rem; color: #6b7280; margin-top: 4px; }
 </style>
 """, unsafe_allow_html=True)
-    st.session_state["_gsse_styles_injected"] = True
 
 
 def _opt_row_html(text, state):
@@ -436,7 +450,7 @@ def _render_typeX(q, key):
 
     else:
         st.markdown('<div class="q-type-label">True / False</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="q-stem">{q["stem"]}</div>', unsafe_allow_html=True)
+        st.markdown(_stem_div(q), unsafe_allow_html=True)
         stmts = q.get("statements") or []
 
         def _show_tf_result(picks):
@@ -487,7 +501,7 @@ def _render_typeA(q, key):
     is_sr = "statement-reason" in (q.get("tags") or [])
     type_label = "Statement &amp; Reason" if is_sr else "Single Best Answer"
     st.markdown(f'<div class="q-type-label">{type_label}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="q-stem">{q["stem"]}</div>', unsafe_allow_html=True)
+    st.markdown(_stem_div(q), unsafe_allow_html=True)
 
     opts = q.get("options") or []
     answered_key = f"{key}_answered"
@@ -534,7 +548,7 @@ def _render_spot(q, key):
             st.image(path, use_container_width=True)
         else:
             st.warning(f"Image not found: {img}")
-    st.markdown(f'<div class="q-stem">{q["stem"]}</div>', unsafe_allow_html=True)
+    st.markdown(_stem_div(q), unsafe_allow_html=True)
 
     answered_key = f"{key}_answered"
 

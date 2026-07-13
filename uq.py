@@ -318,11 +318,14 @@ def _go(view, topic_id=None):
 # ---------------------------------------------------------------------------
 
 def _inject_q_styles():
-    if st.session_state.get("_uq_styles_injected"):
-        return
+    # NOT guarded by a session_state flag. Streamlit rebuilds the element tree
+    # each rerun, so a <style> that isn't re-emitted is dropped from the DOM —
+    # and because _mcq_card is an @st.fragment, the style sits in the fragment's
+    # own slot. With the old guard, question 1 rendered styled and every question
+    # after it rendered naked (bare "Single Best Answer", unbolded lead-in).
     try:
-        from stem_format import LAB_TABLE_CSS
-        st.markdown(LAB_TABLE_CSS, unsafe_allow_html=True)
+        from stem_format import QUESTION_CSS
+        st.markdown(QUESTION_CSS, unsafe_allow_html=True)
     except Exception:
         pass
     st.markdown("""
@@ -400,7 +403,6 @@ div[role="radiogroup"] > label > div:last-child { white-space: normal; }
 }
 </style>
 """, unsafe_allow_html=True)
-    st.session_state["_uq_styles_injected"] = True
 
 
 # ---------------------------------------------------------------------------
