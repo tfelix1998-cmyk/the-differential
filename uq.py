@@ -19,6 +19,8 @@ PERFORMANCE: each question is rendered inside @st.fragment, so answering one
 question only reruns that question's fragment — not the whole 10-tab app.
 """
 
+import html  # module-level: _explanation_paragraphs() needs html.escape
+import html
 import os
 import json
 import datetime as _dt

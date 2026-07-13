@@ -74,7 +74,6 @@ def _split_result_and_range(val):
     #   "Hb: 130 (135-175) g/L"   -> unit on the result
     #   "WCC: 21.1 (4.0-11.0 x10^9/L)" -> unit inside the range
     # Show it on both, so the table reads like a real results sheet.
-    unit_re = re.compile(r'(?:[a-zA-Z%°µ][\w%/^·\.]*(?:/[\w\.^]+)*)\s*$')
     def _unit(s):
         s2 = re.sub(r'^[<>]?\s*[\d\.,\s\-–]+', '', s).strip()
         return s2 if s2 and re.search(r'[a-zA-Z%°]', s2) else ""
