@@ -248,11 +248,17 @@ def _prose_html(text, lead=False):
 QUESTION_CSS = """
 <style>
 /* ---- Unanswered options: style st.radio to match the answered .opt-row cards.
-   Without this the state you actually READ the question in is the cramped one. */
-div[role="radiogroup"] {
+   Without this, the state you actually READ the question in is the cramped one.
+
+   SCOPED to [class*="st-key-qopts"] — i.e. only radios wrapped in
+   options_container(). An earlier version targeted div[role="radiogroup"]
+   globally, which also hit the module nav, the exam-mode picker and every other
+   st.radio in the app: the horizontal nav collapsed into a vertical stack of
+   cards. Never style st.radio app-wide. */
+[class*="st-key-qopts"] div[role="radiogroup"] {
     display: flex; flex-direction: column; gap: 10px; margin: 0 0 18px 0;
 }
-div[role="radiogroup"] > label {
+[class*="st-key-qopts"] div[role="radiogroup"] > label {
     display: flex; align-items: flex-start; gap: 14px;
     background: #FFFFFF; border: 1.5px solid #E2E6F5;
     border-radius: 14px; padding: 16px 20px; margin: 0;
@@ -260,8 +266,12 @@ div[role="radiogroup"] > label {
     color: #1E2233; font-size: 0.97rem; line-height: 1.5;
     box-shadow: 0 1px 3px rgba(30,34,51,0.05);
 }
-div[role="radiogroup"] > label:hover { border-color: #5B62F2; background: #F7F8FF; }
-div[role="radiogroup"] > label > div:last-child { white-space: normal; }
+[class*="st-key-qopts"] div[role="radiogroup"] > label:hover {
+    border-color: #5B62F2; background: #F7F8FF;
+}
+[class*="st-key-qopts"] div[role="radiogroup"] > label > div:last-child {
+    white-space: normal;
+}
 
 .opt-row { align-items: flex-start !important; }
 
@@ -321,7 +331,7 @@ div[role="radiogroup"] > label > div:last-child { white-space: normal; }
 .psa-body { margin: 0; font-size: 0.98rem; line-height: 1.7; color: #1E2233; }
 
 @media (max-width: 640px) {
-    div[role="radiogroup"] > label { padding: 14px 16px; }
+    [class*="st-key-qopts"] div[role="radiogroup"] > label { padding: 14px 16px; }
     .lab-table { font-size: 0.82rem; }
     .lab-table thead th, .lab-table td { padding: 9px 10px; }
     .lab-val, .lab-ref { white-space: normal; }
@@ -426,3 +436,17 @@ def psa_case_html(text):
                 continue
         out.append(f'<p class="psa-body">{html.escape(body)}</p>')
     return "".join(out)
+
+
+def options_container(st, key):
+    """Wrap a question's option radio so the option-card CSS applies to it —
+    and ONLY to it.
+
+    Streamlit renders a keyed container with class "st-key-<key>", which the
+    stylesheet scopes on. Without this wrapper the card styling leaks onto the
+    module nav and every other st.radio in the app.
+    """
+    try:
+        return st.container(key=f"qopts_{key}")
+    except TypeError:          # older Streamlit without container(key=)
+        return st.container()

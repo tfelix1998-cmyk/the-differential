@@ -439,7 +439,13 @@ def _render_typeX(q, key):
             _show_sr_result(st.session_state.get(f"{key}_picked_sr"))
             return None
 
-        picked_sr = st.radio("", sr_options, key=f"{key}_sr", index=None, label_visibility="collapsed")
+        try:
+            from stem_format import options_container
+            _oc = options_container(st, f"{key}_sr")
+        except Exception:
+            _oc = st.container()
+        with _oc:
+            picked_sr = st.radio("", sr_options, key=f"{key}_sr", index=None, label_visibility="collapsed")
         if st.button("Submit Answer", key=f"{key}_check", type="primary", use_container_width=True):
             st.session_state[answered_key] = True
             st.session_state[f"{key}_picked_sr"] = picked_sr
@@ -524,7 +530,13 @@ def _render_typeA(q, key):
         _show_result(st.session_state.get(f"{key}_picked_letter"))
         return None
 
-    picked = st.radio("", opts, key=f"{key}_opt", index=None,
+    try:
+        from stem_format import options_container
+        _oc = options_container(st, key)
+    except Exception:
+        _oc = st.container()
+    with _oc:
+        picked = st.radio("", opts, key=f"{key}_opt", index=None,
                       label_visibility="collapsed",
                       format_func=lambda o: re.sub(r"^\s*([A-Za-z])[\.\)]\s*", r"\1.  ", o))
 

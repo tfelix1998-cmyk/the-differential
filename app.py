@@ -254,11 +254,23 @@ hr { border-color: #E2E6F5 !important; }
 # renderer so every question in every module looks identical.
 try:
     from stem_format import (QUESTION_CSS as _QCSS, stem_html as _stem_html,
-                             explanation_paragraphs as _expl_paras)
+                             explanation_paragraphs as _expl_paras,
+                             options_container as _opts_ctr)
     st.markdown(_QCSS, unsafe_allow_html=True)
 except Exception:
     _stem_html = None
     _expl_paras = None
+    _opts_ctr = None
+
+
+def options_container(st_mod, key):
+    """Scope the option-card CSS to question radios only (never the nav)."""
+    if _opts_ctr:
+        try:
+            return _opts_ctr(st_mod, key)
+        except Exception:
+            pass
+    return st_mod.container()
 
 
 def fmt_stem(text):
@@ -2027,7 +2039,8 @@ if tab_mcq:
                 )
 
                 if not is_submitted:
-                    choice = st.radio("Answer", mcq["options"], key=f"exam_r_{idx}", index=None, label_visibility="collapsed")
+                    with options_container(st, f"exam_{idx}"):
+                        choice = st.radio("Answer", mcq["options"], key=f"exam_r_{idx}", index=None, label_visibility="collapsed")
 
                     col_prev, col_sub, col_skip = st.columns([1, 2, 1])
                     with col_prev:
@@ -2171,7 +2184,8 @@ if tab_mcq:
                 )
 
                 if not is_submitted:
-                    choice = st.radio("Answer", mcq["options"], key=f"rev_r_{i}", index=None, label_visibility="collapsed")
+                    with options_container(st, f"rev_{i}"):
+                        choice = st.radio("Answer", mcq["options"], key=f"rev_r_{i}", index=None, label_visibility="collapsed")
                     if st.button("Submit", key=f"rev_s_{i}"):
                         if choice:
                             is_correct = choice.strip()[0].upper() == correct_letter
@@ -2513,7 +2527,8 @@ if tab_mock:
                 )
 
                 if not is_sub:
-                    choice = st.radio("Answer", mcq["options"], key=f"mock_r_{idx}",
+                    with options_container(st, f"mock_{idx}"):
+                     choice = st.radio("Answer", mcq["options"], key=f"mock_r_{idx}",
                                       index=None, label_visibility="collapsed")
                     if st.button("Submit Answer", key=f"mock_sub_{idx}", type="primary"):
                         if choice:

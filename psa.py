@@ -263,7 +263,13 @@ def _render_sba(item, kp):
     correct = item["correct"]
 
     if not st.session_state.get(sub_key):
-        choice = st.radio("Options", options, key=f"{kp}_r", index=None,
+        try:
+            from stem_format import options_container
+            _oc = options_container(st, kp)
+        except Exception:
+            _oc = st.container()
+        with _oc:
+            choice = st.radio("Options", options, key=f"{kp}_r", index=None,
                           label_visibility="collapsed")
         if st.button("Submit", key=f"{kp}_btn", type="primary"):
             if choice is None:

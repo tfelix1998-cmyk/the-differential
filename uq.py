@@ -529,7 +529,13 @@ def _mcq_card(topic_id, mcq, number, key):
         _show_result(st.session_state.get(f"{key}_picked_letter"))
         return
 
-    picked = st.radio("", options, key=f"{key}_opt", index=None,
+    try:
+        from stem_format import options_container
+        _oc = options_container(st, key)
+    except Exception:
+        _oc = st.container()
+    with _oc:
+        picked = st.radio("", options, key=f"{key}_opt", index=None,
                       label_visibility="collapsed",
                       format_func=lambda o: _re.sub(r"^\s*([A-Za-z])[\.\)]\s*", r"\1.  ", o))
 
