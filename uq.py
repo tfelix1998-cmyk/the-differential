@@ -97,19 +97,35 @@ def _load_content():
             EMED_BANKS[_bank] = _qs
     except Exception:
         pass
-    # Drop unservable questions (empty stem / blank options / no explanation).
-    # An unanswerable question is worse than no question.
+    # Repair the OCR damage, then drop what is left unservable.
+    #
+    # clean_banks() does BOTH, and it must be the only thing that drops. Every
+    # index above (STEM/ANSWER/OPTION overrides) and every index inside it
+    # (QUARANTINE, its own BROKEN list) is an index into the *unfiltered* bank.
+    # Filter in two places and the second set of indices addresses the wrong
+    # questions. So: apply all fixes, take one union of everything to drop,
+    # filter once. QUARANTINE is therefore passed IN rather than applied here.
     try:
-        from emed_stem_overrides import QUARANTINE
-        EMED_BANKS = dict(EMED_BANKS)
-        for _bank, _drop in QUARANTINE.items():
-            if _bank not in EMED_BANKS:
-                continue
-            _bad = set(int(x) for x in _drop)
-            EMED_BANKS[_bank] = [q for j, q in enumerate(EMED_BANKS[_bank])
-                                 if j not in _bad]
+        from emed_clean import clean_banks
+        try:
+            from emed_stem_overrides import QUARANTINE
+        except Exception:
+            QUARANTINE = {}
+        EMED_BANKS = clean_banks(EMED_BANKS, quarantine=QUARANTINE)
     except Exception:
-        pass
+        # Cleaner unavailable — fall back to the quarantine drop on its own, so
+        # the module still loads (dirty, but servable).
+        try:
+            from emed_stem_overrides import QUARANTINE
+            EMED_BANKS = dict(EMED_BANKS)
+            for _bank, _drop in QUARANTINE.items():
+                if _bank not in EMED_BANKS:
+                    continue
+                _bad = set(int(x) for x in _drop)
+                EMED_BANKS[_bank] = [q for j, q in enumerate(EMED_BANKS[_bank])
+                                     if j not in _bad]
+        except Exception:
+            pass
 
     out = {}
     for t in ucfg.UQ_TOPICS:
@@ -350,10 +366,31 @@ def _inject_q_styles():
 .uq-result-ok  { color: #059669; font-weight: 600; }
 .uq-result-bad { color: #dc2626; font-weight: 600; }
 .uq-expl { font-size: 0.85rem; color: #6b7280; margin-top: 4px; line-height: 1.5; }
-.uq-klp {
-    background: #fffbeb; border-left: 3px solid #f59e0b; border-radius: 0 8px 8px 0;
-    padding: 10px 14px; margin-top: 8px; font-size: 0.85rem; color: #78350f;
+
+/* Explanation body: the option-by-option critique, lifted out of the wall of
+   prose into a real list. */
+.explanation-body .expl-list {
+    margin: 10px 0; padding: 10px 14px 10px 30px;
+    background: #f8fafc; border-radius: 8px; list-style: disc;
 }
+.explanation-body .expl-list li { margin: 4px 0; line-height: 1.55; }
+
+/* Take-home points. The thing you are meant to walk away with, so it is the
+   loudest block on the card — not a grey footnote. */
+.uq-klp {
+    background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b;
+    border-radius: 0 10px 10px 0; padding: 12px 16px 12px 18px; margin-top: 12px;
+}
+.uq-klp-h {
+    font-size: 0.78rem; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: #b45309; margin-bottom: 8px;
+}
+.uq-klp ul { margin: 0; padding-left: 20px; list-style: disc; }
+.uq-klp li {
+    margin: 6px 0; line-height: 1.55; font-size: 0.92rem;
+    font-weight: 600; color: #78350f;
+}
+.uq-klp li::marker { color: #f59e0b; }
 .uq-viva-card {
     background: #f9fafb; border-left: 3px solid #6366f1; border-radius: 0 8px 8px 0;
     padding: 14px 18px; margin: 8px 0; color: #1f2937;
@@ -470,11 +507,13 @@ def _uq_opt_row_html(text, state):
 
 
 def _explanation_paragraphs(text):
-    """Split explanation prose into real <p> blocks.
+    """Split explanation prose into real <p> blocks and <ul> lists.
 
     Bank explanations arrive as one long run of text. Dumping that into a single
     <div> is what makes the answer panel a wall with no spacing. Split on blank
-    lines (falling back to single newlines) so each idea gets its own block.
+    lines (falling back to single newlines) so each idea gets its own block, and
+    lift the option-by-option critique — which emed_clean marks with "* " — into
+    a real bulleted list instead of leaving it inline.
     """
     text = (text or "").strip()
     if not text:
@@ -482,7 +521,44 @@ def _explanation_paragraphs(text):
     chunks = _re.split(r"\n\s*\n", text)
     if len(chunks) == 1:
         chunks = [c for c in text.split("\n") if c.strip()]
-    return "".join(f"<p>{html.escape(c.strip())}</p>" for c in chunks if c.strip())
+
+    out, bullets = [], []
+
+    def flush():
+        if bullets:
+            out.append('<ul class="expl-list">'
+                       + "".join(f"<li>{html.escape(b)}</li>" for b in bullets)
+                       + "</ul>")
+            bullets.clear()
+
+    for c in chunks:
+        c = c.strip()
+        if not c:
+            continue
+        if c.startswith(("* ", "- ", "\u2022 ")):
+            bullets.append(c[2:].strip())
+            continue
+        flush()
+        out.append(f"<p>{html.escape(c)}</p>")
+    flush()
+    return "".join(out)
+
+
+def _key_points_html(points):
+    """The take-home panel. `points` may be a list or a legacy single string."""
+    if not points:
+        return ""
+    if isinstance(points, str):
+        items = [p.strip() for p in _re.split(r"\n+|(?:^|\s)[\*\u2022]\s+", points)
+                 if p.strip()]
+    else:
+        items = [str(p).strip() for p in points if str(p).strip()]
+    if not items:
+        return ""
+    lis = "".join(f"<li>{html.escape(p)}</li>" for p in items)
+    return ('<div class="uq-klp">'
+            '<div class="uq-klp-h">\U0001f4a1 Key points</div>'
+            f'<ul>{lis}</ul></div>')
 
 
 def _uq_explanation_html(explanation, key_learning_points=None):
@@ -490,8 +566,9 @@ def _uq_explanation_html(explanation, key_learning_points=None):
         st.markdown(f'<div class="explanation-box"><h4>Explanation</h4>'
                     f'<div class="explanation-body">{_explanation_paragraphs(explanation)}</div></div>',
                      unsafe_allow_html=True)
-    if key_learning_points:
-        st.markdown(f'<div class="uq-klp">🎯 {key_learning_points}</div>', unsafe_allow_html=True)
+    kp = _key_points_html(key_learning_points)
+    if kp:
+        st.markdown(kp, unsafe_allow_html=True)
 
 
 @st.fragment
