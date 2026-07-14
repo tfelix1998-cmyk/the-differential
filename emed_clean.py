@@ -555,9 +555,16 @@ def clean_text(text):
 
 # Trailing OCR marker junk on an option: "Baricitinib %", "Endoscopy %",
 # "Carotid duplex ultrasound asK", "Vascular Parkinsonism oe".
+#
+# The junk "%" is always adrift from the text ("Endoscopy %"). A "%" welded to a
+# digit is a real percentage — "0%", "80%", "Less than 1%" — and stripping it
+# turned Apgar, GCS and sensitivity options into bare numbers. Hence the
+# whitespace requirement before the symbol run, and [A-Za-z]% rather than
+# [A-Za-z]?%.
 _OPT_TAIL = re.compile(
-    r"(?:\s+(?:ox|ax|om|oe|ne|wm|nw|as[A-Z]|o%|n%|[A-Za-z]?%|\d+x|[A-Za-z]\d))+\s*$"
-    r"|\s*[\u2122\u00a9\u00ae%\uff0b+*]+\s*$"
+    r"(?:\s+(?:ox|ax|om|oe|ne|wm|nw|as[A-Z]|o%|n%|[A-Za-z]%|\d+x|[A-Za-z]\d))+\s*$"
+    r"|\s+[\u2122\u00a9\u00ae%\uff0b+*]+\s*$"
+    r"|(?<=[A-Za-z])[\u2122\u00a9\u00ae\uff0b*]+\s*$"
 )
 
 
@@ -898,6 +905,34 @@ def _restore_stem_article(stem):
     return f"{art} {stem}"
 
 
+# --- Authored repairs ------------------------------------------------------
+# emed_authored.py carries rewritten stems, options, answers and explanations
+# for the 126 questions the scan destroyed outright. Optional: if the file is
+# missing the cleaner still works, it just drops those questions as before.
+try:
+    from emed_authored import AUTHORED
+except Exception:
+    AUTHORED = {}
+
+
+def _apply_authored(q, fix):
+    q = dict(q)
+    if "stem" in fix:
+        q["question_text"] = fix["stem"]
+        q["image_url"] = ""
+    elif "stem_replace" in fix:
+        old, new = fix["stem_replace"]
+        q["question_text"] = (q.get("question_text") or "").replace(old, new)
+        q["image_url"] = ""
+    if "options" in fix:
+        q["options"] = list(fix["options"])
+    if "answer" in fix:
+        q["correct_answer_letter"] = fix["answer"]
+    if "explanation" in fix:
+        q["explanation"] = fix["explanation"]
+    return q
+
+
 def clean_question(q):
     """Repair one question dict. Returns a NEW dict; the original is untouched."""
     q = dict(q)
@@ -921,32 +956,47 @@ def clean_question(q):
 
 
 def clean_banks(banks, quarantine=None, stats=None):
-    """Repair every EMED bank, then drop the unservable questions.
+    """Repair every EMED bank, then drop what is still unservable.
 
-    IMPORTANT — this does the dropping for the WHOLE pipeline, including the
-    existing QUARANTINE list from emed_stem_overrides. Every index (QUARANTINE,
-    BROKEN, OPTION_FIXES, and the STEM/ANSWER/OPTION overrides applied upstream)
-    is an index into the *unfiltered* bank. Filter in two places and the second
-    set of indices points at the wrong questions. So: fix everything first,
-    take one union of everything to drop, filter once.
+    ORDER MATTERS, in two ways.
+
+    1. The AUTHORED repairs (emed_authored.py) are applied FIRST, before the
+       hollow/blank test. That is the whole point of them: a question whose
+       vignette was trapped in an unreadable image is hollow until its stem is
+       rewritten, and then it is a perfectly good question. Applying them after
+       the test would drop them anyway. An authored repair therefore also
+       OVERRIDES quarantine — being on the quarantine list means "unservable as
+       scanned", not "unservable forever".
+
+    2. This does the dropping for the WHOLE pipeline, including the QUARANTINE
+       list from emed_stem_overrides. Every index (QUARANTINE, BROKEN,
+       OPTION_FIXES, AUTHORED, and the STEM/ANSWER/OPTION overrides applied
+       upstream in uq.py) is an index into the *unfiltered* bank. Filter in two
+       places and the second set of indices addresses the wrong questions. So:
+       fix everything, take one union of what is left to drop, filter once.
 
         EMED_BANKS = clean_banks(EMED_BANKS, quarantine=QUARANTINE)
 
     `stats` — pass a dict to receive counts (handy in the debug panel).
     """
     quarantine = quarantine or {}
-    dropped = hollow_n = blank_n = 0
+    dropped = hollow_n = blank_n = repaired = 0
     out = {}
     for bank, questions in banks.items():
+        authored = AUTHORED.get(bank, {})
         drop = set(int(x) for x in quarantine.get(bank, []))
         drop |= set(BROKEN.get(bank, []))
+        drop -= set(authored)                    # an authored repair un-drops it
         fixes = OPTION_FIXES.get(bank, {})
         kept = []
         for i, q in enumerate(questions):
             if i in drop:
                 dropped += 1
                 continue
-            if i in fixes:
+            if i in authored:
+                q = _apply_authored(q, authored[i])
+                repaired += 1
+            elif i in fixes:
                 q = dict(q)
                 q["options"] = list(fixes[i])
             q = clean_question(q)
@@ -964,5 +1014,5 @@ def clean_banks(banks, quarantine=None, stats=None):
         out[bank] = kept
     if stats is not None:
         stats.update(dropped=dropped, hollow=hollow_n, blank=blank_n,
-                     kept=sum(len(v) for v in out.values()))
+                     repaired=repaired, kept=sum(len(v) for v in out.values()))
     return out
