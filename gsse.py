@@ -21,6 +21,7 @@ Built with native Streamlit components so it adapts to your app theme (light or 
 import os
 import re
 import json
+import time
 import datetime as _dt
 
 import streamlit as st
@@ -238,12 +239,16 @@ def _flush(persist_set, user):
 # Navigation + marking helpers
 # ---------------------------------------------------------------------------
 
-def _go(view, topic_id=None, subtopic_id=None):
+def _go(view, topic_id=None, subtopic_id=None, qfilter=None):
     st.session_state["_gsse_view"] = view
     if topic_id is not None:
         st.session_state["_gsse_topic"] = topic_id
     if subtopic_id is not None:
         st.session_state["_gsse_subtopic"] = subtopic_id
+    if qfilter is not None:
+        # A display-name format label ("SBA", "Spot", …) or "all".
+        st.session_state["_gsse_qfilter"] = qfilter
+        st.session_state["_gsse_mode"] = None  # fresh launch -> mode chooser
     st.rerun()
 
 
@@ -923,38 +928,262 @@ def _subtopics_view(qindex):
                             unsafe_allow_html=True)
 
         with c4:
-            pills = "".join(
-                f'<span class="tag-pill" style="font-size:0.72rem; padding:3px 10px; margin-right:4px;">{t}</span>'
-                for t in types_here
-            ) or "<span style='color:#6B7290;'>—</span>"
-            c4.markdown(pills, unsafe_allow_html=True)
+            # Clickable format pills: each launches the study view filtered to
+            # that question format. A subtopic with several formats shows one
+            # button per format, side by side.
+            if types_here:
+                pill_cols = c4.columns(max(len(types_here), 1))
+                for pi, t in enumerate(types_here):
+                    n_of_type = sum(
+                        1 for q in qs
+                        if TYPE_LABEL.get(q.get("type"), q.get("type")) == t)
+                    if pill_cols[pi].button(f"{t} ({n_of_type})",
+                                            key=f"gsse_pill_{s['id']}_{pi}",
+                                            use_container_width=True):
+                        _go("study", subtopic_id=s["id"], qfilter=t)
+            else:
+                c4.markdown("<span style='color:#6B7290;'>—</span>", unsafe_allow_html=True)
 
         with c5:
             if n_q:
                 label = "Resume" if n_answered else "Start"
                 if c5.button(label, key=f"study_{s['id']}", use_container_width=True):
-                    _go("study", subtopic_id=s["id"])
+                    _go("study", subtopic_id=s["id"], qfilter="all")
             else:
                 c5.markdown("<span style='color:#6B7290; font-size:0.85em;'>—</span>",
                             unsafe_allow_html=True)
 
 
 
+def _fmt_time(seconds):
+    seconds = int(seconds)
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def _filtered_qs(qindex, sid):
+    """The subtopic's questions, narrowed to the format the pill launched.
+    '_gsse_qfilter' is a display label ('SBA', 'Spot', …) or 'all'."""
+    qs = qindex.get(sid, [])
+    qf = st.session_state.get("_gsse_qfilter", "all")
+    if qf and qf != "all":
+        qs = [q for q in qs if TYPE_LABEL.get(q.get("type"), q.get("type")) == qf]
+    return qs
+
+
 def _study_view(qindex):
+    """Dispatcher: format filter → mode chooser → exam / review / results."""
     sid = st.session_state.get("_gsse_subtopic")
     topic, sub = get_subtopic(sid)
     if sub is None:
         _go("topics"); return
 
-    qs = qindex.get(sid, [])
+    qs = _filtered_qs(qindex, sid)
     if not qs:
-        st.info("No questions in this subtopic yet.")
+        st.info("No questions of that type in this subtopic.")
+        if st.button("← Back to topic", key="gsse_nofilter_back"):
+            _go("subtopics", topic_id=topic["id"])
         return
 
-    # Reset the pointer whenever we land on a new subtopic
-    if st.session_state.get("_gsse_qidx_subtopic") != sid:
+    mode = st.session_state.get("_gsse_mode")
+    if mode == "exam":
+        _gsse_exam_panel(qs, sid, topic, sub)
+    elif mode == "results":
+        _gsse_results_screen(qs, sid, topic, sub)
+    elif mode == "review":
+        _gsse_review_panel(qs, sid, topic, sub)
+    else:
+        _gsse_mode_chooser(qs, sid, topic, sub)
+
+
+def _gsse_mode_chooser(qs, sid, topic, sub):
+    """Two-card Exam vs Review picker, matching the UQ/standalone MCQ tab."""
+    top = st.columns([6, 2])
+    qf = st.session_state.get("_gsse_qfilter", "all")
+    ftxt = "" if qf in (None, "all") else f" · {qf}"
+    top[0].markdown(f"### {topic['icon']} {sub['name']}{ftxt}")
+    if top[1].button("← Back to topic", key="gsse_chooser_back"):
+        _go("subtopics", topic_id=topic["id"])
+
+    st.markdown(f"**{len(qs)} questions**")
+    st.markdown(
+        '<p style="color:#6B7290;font-size:0.9rem;text-transform:uppercase;'
+        'letter-spacing:0.08em;font-weight:600;margin-top:6px;">Select mode</p>',
+        unsafe_allow_html=True)
+    col_exam, col_review = st.columns(2)
+    with col_exam:
+        st.markdown(
+            '<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:14px;'
+            'padding:20px;text-align:center;min-height:150px;">'
+            '<div style="font-size:2rem;margin-bottom:12px;">⏱️</div>'
+            '<div style="font-size:1.1rem;font-weight:700;color:#1E2233;margin-bottom:8px;">Exam Mode</div>'
+            '<div style="color:#6B7290;font-size:0.875rem;line-height:1.5;">'
+            'One question at a time · Live timer · Simulate exam conditions</div></div>',
+            unsafe_allow_html=True)
+        if st.button("Start Exam Mode →", key=f"gsse_startexam_{sid}",
+                     type="primary", use_container_width=True):
+            st.session_state["_gsse_mode"] = "exam"
+            st.session_state["_gsse_exam_idx"] = 0
+            st.session_state["_gsse_exam_marked"] = set()
+            st.session_state["_gsse_exam_start"] = time.time()
+            st.session_state["_gsse_exam_sid"] = sid
+            st.rerun()
+    with col_review:
+        st.markdown(
+            '<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:14px;'
+            'padding:20px;text-align:center;min-height:150px;">'
+            '<div style="font-size:2rem;margin-bottom:12px;">📖</div>'
+            '<div style="font-size:1.1rem;font-weight:700;color:#1E2233;margin-bottom:8px;">Review Mode</div>'
+            '<div style="color:#6B7290;font-size:0.875rem;line-height:1.5;">'
+            'All questions · Question map · No timer · Submit and review</div></div>',
+            unsafe_allow_html=True)
+        if st.button("Start Review Mode →", key=f"gsse_startreview_{sid}",
+                     use_container_width=True):
+            st.session_state["_gsse_mode"] = "review"
+            st.rerun()
+
+
+def _gsse_exam_panel(qs, sid, topic, sub):
+    """Timed, one-at-a-time exam with an item navigator, mark-for-review and a
+    results screen. Uses the same per-type renderers as review mode, so every
+    GSSE format works; answers still log to normal subtopic progress."""
+    if st.session_state.get("_gsse_exam_sid") != sid:
+        st.session_state["_gsse_mode"] = None
+        st.rerun()
+
+    marked = st.session_state.setdefault("_gsse_exam_marked", set())
+    sp = _sub_progress(sid)
+    attempts = sp["attempts"]
+    total = len(qs)
+    idx = max(0, min(st.session_state.get("_gsse_exam_idx", 0), total - 1))
+    st.session_state["_gsse_exam_idx"] = idx
+    elapsed = time.time() - st.session_state.get("_gsse_exam_start", time.time())
+
+    nav_col, main_col = st.columns([1, 5])
+
+    with nav_col:
+        st.markdown(
+            '<p style="color:#6B7290;font-size:0.7rem;text-transform:uppercase;'
+            'letter-spacing:0.08em;font-weight:700;margin-bottom:8px;">Items</p>',
+            unsafe_allow_html=True)
+        for i in range(total):
+            qid_i = qs[i].get("id", f"study-{i}")
+            done = attempts.get(qid_i) is not None
+            if i == idx:
+                label = f"▸ {i+1}"
+            elif done:
+                label = f"✓ {i+1}"
+            elif i in marked:
+                label = f"⚑ {i+1}"
+            else:
+                label = f"{i+1}"
+            if st.button(label, key=f"gsse_exnav_{sid}_{i}", use_container_width=True):
+                st.session_state["_gsse_exam_idx"] = i
+                st.rerun()
+
+    with main_col:
+        pct = ((idx + 1) / total) * 100
+        answered = [attempts.get(q2.get("id", f"study-{i}")) for i, q2 in enumerate(qs)]
+        answered = [a for a in answered if a is not None]
+        correct_n = sum(1 for a in answered if a["correct"] == a["total"])
+        attempted = len(answered)
+        st.markdown(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;'
+            f'padding:14px 20px;margin-bottom:16px;">'
+            f'<span style="font-weight:700;color:#5B62F2;font-size:1rem;">Item {idx+1} / {total}</span>'
+            f'<div style="flex:1;margin:0 20px;background:#E2E6F5;border-radius:4px;height:6px;">'
+            f'<div style="width:{pct:.0f}%;background:#5B62F2;height:6px;border-radius:4px;"></div></div>'
+            f'<span style="font-weight:700;color:#6B7290;font-family:monospace;font-size:1rem;">⏱ {_fmt_time(elapsed)}</span>'
+            f'</div>', unsafe_allow_html=True)
+        if attempted:
+            acc = correct_n / attempted * 100
+            st.markdown(
+                f'<div style="display:flex;gap:16px;margin-bottom:12px;">'
+                f'<span style="background:#EAF7EE;color:#4CAF6D;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">✅ {correct_n} correct</span>'
+                f'<span style="background:#FCEDEC;color:#E5534B;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">❌ {attempted-correct_n} incorrect</span>'
+                f'<span style="background:#EEF0FE;color:#5B62F2;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">📊 {acc:.0f}% accuracy</span>'
+                f'</div>', unsafe_allow_html=True)
+
+        q = qs[idx]
+        qid = q.get("id", f"study-{idx}")
+        mark_label = "⚑ Unmark" if idx in marked else "⚑ Mark for review"
+        if st.button(mark_label, key=f"gsse_exmark_{sid}_{idx}"):
+            marked.symmetric_difference_update({idx})
+            st.rerun()
+
+        with st.container(border=True):
+            renderer = _RENDERERS.get(q.get("type"), _render_typeA)
+            result = renderer(q, key=f"gsse_exam_{sid}_{qid}")
+            if result is not None:
+                cc, tt = result
+                _record_attempt(sid, qid, cc, tt)
+
+        st.write("")
+        nav = st.columns([1, 1, 3, 1, 1])
+        if nav[0].button("⟵ Prev", disabled=(idx == 0), use_container_width=True,
+                         key=f"gsse_exprev_{sid}"):
+            st.session_state["_gsse_exam_idx"] = idx - 1
+            st.rerun()
+        nav[2].markdown(f"<div style='text-align:center;color:#6B7290;font-size:0.85rem;padding-top:8px;'>"
+                        f"Question {idx + 1} of {total}</div>", unsafe_allow_html=True)
+        if idx < total - 1:
+            if nav[4].button("Next ⟶", use_container_width=True, key=f"gsse_exnext_{sid}"):
+                st.session_state["_gsse_exam_idx"] = idx + 1
+                st.rerun()
+        else:
+            if nav[4].button("🏁 Finish", type="primary", use_container_width=True,
+                             key=f"gsse_exfin_{sid}"):
+                st.session_state["_gsse_mode"] = "results"
+                st.rerun()
+
+        st.markdown("---")
+        if st.button("← Back to mode select", key=f"gsse_exback_{sid}"):
+            st.session_state["_gsse_mode"] = None
+            st.rerun()
+
+
+def _gsse_results_screen(qs, sid, topic, sub):
+    sp = _sub_progress(sid)
+    attempts = sp["attempts"]
+    total = len(qs)
+    answered = [attempts.get(q2.get("id", f"study-{i}")) for i, q2 in enumerate(qs)]
+    answered = [a for a in answered if a is not None]
+    attempted = len(answered)
+    correct_n = sum(1 for a in answered if a["correct"] == a["total"])
+    elapsed = time.time() - st.session_state.get("_gsse_exam_start", time.time())
+    acc = correct_n / attempted * 100 if attempted else 0
+
+    st.markdown("### 🏁 Session complete")
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("Attempted", f"{attempted}/{total}")
+    r2.metric("Correct", correct_n)
+    r3.metric("Accuracy", f"{acc:.1f}%")
+    r4.metric("Time", _fmt_time(elapsed))
+    if acc >= 80:
+        st.success("🎉 Above 80% — you're well prepared on this topic.")
+    elif acc >= 60:
+        st.warning("📚 Good effort — review the ones you got wrong.")
+    else:
+        st.error("🔄 Below 60% — revisit the material and try again.")
+    col_a, col_b = st.columns(2)
+    if col_a.button("🔄 Try again", key=f"gsse_res_again_{sid}", type="primary",
+                    use_container_width=True):
+        st.session_state["_gsse_mode"] = None
+        st.rerun()
+    if col_b.button("← Back to topic", key=f"gsse_res_back_{sid}",
+                    use_container_width=True):
+        st.session_state["_gsse_mode"] = None
+        _go("subtopics", topic_id=topic["id"])
+
+
+def _gsse_review_panel(qs, sid, topic, sub):
+    # Reset the pointer whenever we land on a new subtopic/filter
+    ptr_key = f"{sid}::{st.session_state.get('_gsse_qfilter','all')}"
+    if st.session_state.get("_gsse_qidx_subtopic") != ptr_key:
         st.session_state["_gsse_qidx"] = 0
-        st.session_state["_gsse_qidx_subtopic"] = sid
+        st.session_state["_gsse_qidx_subtopic"] = ptr_key
     idx = max(0, min(st.session_state.get("_gsse_qidx", 0), len(qs) - 1))
     st.session_state["_gsse_qidx"] = idx
     q = qs[idx]
@@ -968,8 +1197,9 @@ def _study_view(qindex):
 
     with main_col:
         top = st.columns([1, 5, 2.2])
-        if top[0].button("←", key="study_back", help="Back to topic"):
-            _go("subtopics", topic_id=topic["id"])
+        if top[0].button("←", key="study_back", help="Back to mode select"):
+            st.session_state["_gsse_mode"] = None
+            st.rerun()
         top[1].markdown(f"### {topic['icon']} {sub['name']}")
         is_flagged = qid in flagged
         if top[2].button("🚩 Flagged" if is_flagged else "⚑ Flag for review",

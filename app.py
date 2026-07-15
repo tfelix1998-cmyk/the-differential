@@ -1451,7 +1451,7 @@ if st.session_state.get("gen_errors"):
         st.error(f"⚠️ Generation issue → {err}")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-_NAV = ["📈  Dashboard", "🗣️  Viva", "📝  MCQ", "🗂️  Anki", "🎯  Mock Exam",
+_NAV = ["📈  Dashboard", "✍️  Generate / Import", "🗂️  Anki", "🎯  Mock Exam",
         "💊  PSA", "🧠  GSSE", "🎓  UQ", "📚  Library", "🩺  Procedures", "❓  How to use"]
 # PERF: st.tabs runs the body of ALL tabs on every rerun. With 11 heavy tabs
 # (three quiz modules + dashboards + Supabase-backed Library/Procedures), a
@@ -1470,16 +1470,29 @@ except Exception:
                      label_visibility="collapsed", key="_active_view")
 
 tab_dash    = _view == _NAV[0]
-tab_viva    = _view == _NAV[1]
-tab_mcq     = _view == _NAV[2]
-tab_anki    = _view == _NAV[3]
-tab_mock    = _view == _NAV[4]
-tab_psa     = _view == _NAV[5]
-tab_gsse    = _view == _NAV[6]
-tab_uq      = _view == _NAV[7]
-tab_library = _view == _NAV[8]
-tab_proc    = _view == _NAV[9]
-tab_help    = _view == _NAV[10]
+tab_authoring = _view == _NAV[1]   # merged Generate / Import (Viva + MCQ)
+tab_anki    = _view == _NAV[2]
+tab_mock    = _view == _NAV[3]
+tab_psa     = _view == _NAV[4]
+tab_gsse    = _view == _NAV[5]
+tab_uq      = _view == _NAV[6]
+tab_library = _view == _NAV[7]
+tab_proc    = _view == _NAV[8]
+tab_help    = _view == _NAV[9]
+
+# The old top-level Viva and MCQ tabs are now two sub-modes inside one
+# "Generate / Import" section. Studying happens inside the modules (UQ, GSSE,
+# LLP); this section is where you author banks — generate from a PDF or import
+# an existing paper. An inner selector picks which authoring surface to show,
+# so the two large tab bodies below (guarded by tab_viva / tab_mcq) are left
+# completely unchanged.
+tab_viva = tab_mcq = False
+if tab_authoring:
+    _auth_pick = st.radio(
+        "Authoring mode", ["📝  MCQ", "🗣️  Viva"],
+        horizontal=True, label_visibility="collapsed", key="_authoring_mode")
+    tab_mcq = _auth_pick.strip().endswith("MCQ")
+    tab_viva = not tab_mcq
 
 # ═════════════════════════════════════════════════════════════════════════════
 # UQ TAB — UQ Critical Care Module + Orthopaedic Trauma Framework
@@ -1489,6 +1502,8 @@ if tab_uq:
         persist_get=uq_load_progress,
         persist_set=uq_save_progress,
         user=st.session_state.get("current_user", "Terry"),
+        feedback_get=load_feedback,
+        feedback_set=save_feedback,
     )
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2728,12 +2743,12 @@ if tab_library:
                         if st.button("📝 MCQs", key=f"lib_gen_mcq_{nid}"):
                             with st.spinner("Generating MCQs…"):
                                 generate_section("mcq", content, topic_for_gen)
-                            st.success("MCQs generated — see the MCQ & Mock Exam tabs.")
+                            st.success("MCQs generated — see Generate / Import (MCQ) and the Mock Exam tab.")
                     with g2:
                         if st.button("🗣️ Viva", key=f"lib_gen_viva_{nid}"):
                             with st.spinner("Generating viva…"):
                                 generate_section("viva", content, topic_for_gen)
-                            st.success("Viva generated — see the Viva tab picker.")
+                            st.success("Viva generated — see Generate / Import (Viva).")
                     with g3:
                         if st.button("🗂️ Anki", key=f"lib_gen_anki_{nid}"):
                             with st.spinner("Generating Anki cards…"):
@@ -2879,7 +2894,7 @@ and progress are tracked separately. The question banks themselves are shared.
    reads your notes and writes questions from them.
 2. **Saved banks** *(instant, free, no AI)*
    Curated question sets that are built into the app, plus anything you've generated before.
-   Load them from the picker at the top of the MCQ and Viva tabs. These cost nothing and
+   Load them from the picker at the top of **Generate / Import** (MCQ or Viva sub-tab). These cost nothing and
    load instantly.
 
 GSSE, PSA, and UQ are separate, self-contained banks (see below) — they don't need
@@ -2897,7 +2912,7 @@ generating or loading, they're just always there.
 **Built-in question banks (always available, no setup)**
 - **PSA** — Prescribing Safety Assessment practice: 8 item styles (SBA, calculation, matching, prescription writing, etc.), 200 marks, mirrors the real PSA format. Pick a section from the landing page and work through it item by item.
 - **GSSE** — RACS Generic Surgical Sciences Examination bank (Anatomy / Physiology / Pathology), organised the same way the real exam is structured. Dashboard shows readiness by component; Topics lets you drill down to a subtopic and practise its questions (Type X true/false, Type A single-best-answer, and Statement & Reason questions).
-- **UQ** — the UQ Critical Care Module (Emergency Medicine & Trauma, Anaesthesia & Pain Management, Intensive Care) plus Learn Ortho's Orthopaedic Trauma Framework viva. Same Dashboard/Topics shape as GSSE. Open a topic and you'll see an MCQs tab and a Viva tab side by side — the Viva questions work the same way as the main Viva tab (write your own answer, reveal, rate confidence, enter marks).
+- **UQ** — the UQ Critical Care Module (Emergency Medicine & Trauma, Anaesthesia & Pain Management, Intensive Care), the LLP prescribing units, plus Learn Ortho's Orthopaedic Trauma Framework viva. Same Dashboard/Topics shape as GSSE. Each topic row has clickable MCQ and Viva pills — pick one to launch a session filtered to that type (or hit Start for both). MCQ sessions offer Exam mode (timed, one-at-a-time, with a results screen) or Review mode; Viva questions let you write your own answer, reveal, rate confidence, and enter marks. **Generate / Import** is now only for authoring new banks from notes or papers.
 
 **Reference and other tools**
 - **Library** — shared reference notes. Upload a PDF or paste text; it stores the text (the original PDF stays on your device). You can read notes here and generate questions straight from them.

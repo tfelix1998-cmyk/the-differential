@@ -24,6 +24,7 @@ import html
 import os
 import json
 import datetime as _dt
+import time
 
 import streamlit as st
 
@@ -335,11 +336,74 @@ def _flush(persist_set, user):
 # Navigation helpers
 # ---------------------------------------------------------------------------
 
-def _go(view, topic_id=None):
+def _go(view, topic_id=None, mode=None):
     st.session_state["_uq_view"] = view
     if topic_id is not None:
         st.session_state["_uq_topic"] = topic_id
+    if mode is not None:
+        # "mcq" | "viva" | "all" — which question type the row's pill launched.
+        st.session_state["_uq_type_filter"] = mode
+        # A fresh launch always resets the MCQ sub-mode back to the chooser.
+        st.session_state["_uq_mcq_mode"] = None
     st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Per-question feedback (👍 / 👎 + note), persisted to the same mcq_feedback
+# store the standalone MCQ tab uses. uq.py can't import app.py's helpers, so
+# the write goes through a hook app.py stashes in session_state; if the hook
+# is absent (module run standalone) it degrades to session-only.
+# ---------------------------------------------------------------------------
+
+def _feedback_get(qtext):
+    getter = st.session_state.get("_uq_feedback_get")
+    if getter:
+        try:
+            return getter(qtext)
+        except Exception:
+            pass
+    return st.session_state.get("_uq_feedback_local", {}).get(qtext,
+                                                              {"rating": "", "note": ""})
+
+
+def _feedback_set(qtext, rating, note):
+    setter = st.session_state.get("_uq_feedback_set")
+    if setter:
+        try:
+            setter(qtext, rating, note)
+            return
+        except Exception:
+            pass
+    st.session_state.setdefault("_uq_feedback_local", {})[qtext] = {
+        "rating": rating, "note": note}
+
+
+def _render_feedback(mcq, key_prefix):
+    """👍 / 👎 + note for one question. Mirrors app.render_feedback so the two
+    surfaces write to one place."""
+    qtext = mcq.get("question_text", "")
+    fb = _feedback_get(qtext)
+    st.markdown("**Your feedback**")
+    col_up, col_down, col_status = st.columns([1, 1, 4])
+    with col_up:
+        if st.button("👍", key=f"{key_prefix}_up"):
+            _feedback_set(qtext, "up", fb["note"])
+            st.rerun()
+    with col_down:
+        if st.button("👎", key=f"{key_prefix}_down"):
+            _feedback_set(qtext, "down", fb["note"])
+            st.rerun()
+    with col_status:
+        if fb["rating"] == "up":
+            st.caption("Rated 👍")
+        elif fb["rating"] == "down":
+            st.caption("Rated 👎 — flagged to improve")
+    note = st.text_area("Notes", value=fb["note"], key=f"{key_prefix}_note",
+                        placeholder="Add a note to improve this question later…",
+                        label_visibility="collapsed")
+    if st.button("💾 Save note", key=f"{key_prefix}_savenote"):
+        _feedback_set(qtext, fb["rating"], note)
+        st.success("Saved")
 
 
 # ---------------------------------------------------------------------------
@@ -614,6 +678,8 @@ def _mcq_card(topic_id, mcq, number, key):
                 state = "dim"
             st.markdown(_uq_opt_row_html(text, state), unsafe_allow_html=True)
         _uq_explanation_html(mcq.get("explanation"), mcq.get("key_learning_points"))
+        with st.expander("💬 Feedback on this question"):
+            _render_feedback(mcq, f"{key}_fb")
 
     if st.session_state.get(answered_key):
         _show_result(st.session_state.get(f"{key}_picked_letter"))
@@ -1023,18 +1089,25 @@ def _topics_view(content):
                             unsafe_allow_html=True)
 
         with c4:
-            pills = ""
-            if n_mcq:
-                pills += f'<span class="tag-pill" style="font-size:0.72rem; padding:3px 10px; margin-right:4px;">MCQ ({n_mcq})</span>'
-            if n_viva:
-                pills += f'<span class="tag-pill" style="font-size:0.72rem; padding:3px 10px;">Viva ({n_viva})</span>'
-            c4.markdown(pills or "<span style='color:#6B7290;'>—</span>", unsafe_allow_html=True)
+            # Clickable pills: each launches the study view filtered to that type.
+            if n_mcq or n_viva:
+                pill_cols = c4.columns([1, 1])
+                if n_mcq:
+                    if pill_cols[0].button(f"MCQ ({n_mcq})", key=f"uq_pill_mcq_{t['id']}",
+                                           use_container_width=True):
+                        _go("study", topic_id=t["id"], mode="mcq")
+                if n_viva:
+                    if pill_cols[1].button(f"Viva ({n_viva})", key=f"uq_pill_viva_{t['id']}",
+                                           use_container_width=True):
+                        _go("study", topic_id=t["id"], mode="viva")
+            else:
+                c4.markdown("<span style='color:#6B7290;'>—</span>", unsafe_allow_html=True)
 
         with c5:
             if (n_mcq + n_viva):
                 label = "Resume" if n_answered else "Start"
                 if c5.button(label, key=f"uq_study_{t['id']}", use_container_width=True):
-                    _go("study", topic_id=t["id"])
+                    _go("study", topic_id=t["id"], mode="all")
             else:
                 c5.markdown("<span style='color:#6B7290; font-size:0.85em;'>—</span>", unsafe_allow_html=True)
 
@@ -1129,9 +1202,302 @@ def _mcq_study_panel(tid, mcqs):
         st.caption("✓ correct · ✕ incorrect · 🚩 flagged")
 
 
+# ---------------------------------------------------------------------------
+# Exam mode — timed, one-at-a-time, with a results screen. Ported from the
+# standalone MCQ tab so the module matches it exactly. Review mode is the
+# existing _mcq_study_panel above; this adds the timed Exam alternative and
+# the mode chooser that sits in front of both.
+# ---------------------------------------------------------------------------
+
+def _fmt_time(seconds):
+    seconds = int(seconds)
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def _mcq_mode_chooser(tid, mcqs):
+    """Two-card Exam vs Review picker, matching the standalone MCQ tab."""
+    st.markdown(f"**{len(mcqs)} questions** in this topic")
+    st.markdown(
+        '<p style="color:#6B7290;font-size:0.9rem;text-transform:uppercase;'
+        'letter-spacing:0.08em;font-weight:600;margin-top:6px;">Select mode</p>',
+        unsafe_allow_html=True)
+    col_exam, col_review = st.columns(2)
+    with col_exam:
+        st.markdown(
+            '<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:14px;'
+            'padding:20px;text-align:center;min-height:150px;">'
+            '<div style="font-size:2rem;margin-bottom:12px;">⏱️</div>'
+            '<div style="font-size:1.1rem;font-weight:700;color:#1E2233;margin-bottom:8px;">Exam Mode</div>'
+            '<div style="color:#6B7290;font-size:0.875rem;line-height:1.5;">'
+            'One question at a time · Live timer · Simulate exam conditions</div></div>',
+            unsafe_allow_html=True)
+        if st.button("Start Exam Mode →", key=f"uq_startexam_{tid}",
+                     type="primary", use_container_width=True):
+            st.session_state["_uq_mcq_mode"] = "exam"
+            st.session_state["_uq_exam_idx"] = 0
+            st.session_state["_uq_exam_submitted"] = {}
+            st.session_state["_uq_exam_marked"] = set()
+            st.session_state["_uq_exam_start"] = time.time()
+            st.session_state["_uq_exam_topic"] = tid
+            st.rerun()
+    with col_review:
+        st.markdown(
+            '<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:14px;'
+            'padding:20px;text-align:center;min-height:150px;">'
+            '<div style="font-size:2rem;margin-bottom:12px;">📖</div>'
+            '<div style="font-size:1.1rem;font-weight:700;color:#1E2233;margin-bottom:8px;">Review Mode</div>'
+            '<div style="color:#6B7290;font-size:0.875rem;line-height:1.5;">'
+            'All questions · Question map · No timer · Submit and review</div></div>',
+            unsafe_allow_html=True)
+        if st.button("Start Review Mode →", key=f"uq_startreview_{tid}",
+                     use_container_width=True):
+            st.session_state["_uq_mcq_mode"] = "review"
+            st.rerun()
+
+
+def _mcq_exam_panel(tid, mcqs):
+    """Timed, one-at-a-time exam with an item navigator, mark-for-review and a
+    results screen. Answers here also log to normal MCQ progress."""
+    if st.session_state.get("_uq_exam_topic") != tid:
+        # Guard against a stale exam from another topic.
+        st.session_state["_uq_mcq_mode"] = None
+        st.rerun()
+
+    submitted = st.session_state.setdefault("_uq_exam_submitted", {})
+    marked = st.session_state.setdefault("_uq_exam_marked", set())
+    idx = max(0, min(st.session_state.get("_uq_exam_idx", 0), len(mcqs) - 1))
+    st.session_state["_uq_exam_idx"] = idx
+    total = len(mcqs)
+    elapsed = time.time() - st.session_state.get("_uq_exam_start", time.time())
+
+    nav_col, main_col = st.columns([1, 5])
+
+    with nav_col:
+        st.markdown(
+            '<p style="color:#6B7290;font-size:0.7rem;text-transform:uppercase;'
+            'letter-spacing:0.08em;font-weight:700;margin-bottom:8px;">Items</p>',
+            unsafe_allow_html=True)
+        for i in range(total):
+            if i == idx:
+                label = f"▸ {i+1}"
+            elif i in submitted:
+                label = f"✓ {i+1}"
+            elif i in marked:
+                label = f"⚑ {i+1}"
+            else:
+                label = f"{i+1}"
+            if st.button(label, key=f"uq_exnav_{tid}_{i}", use_container_width=True):
+                st.session_state["_uq_exam_idx"] = i
+                st.rerun()
+
+    @st.fragment
+    def _answer_area(idx, total):
+        submitted = st.session_state.setdefault("_uq_exam_submitted", {})
+        marked = st.session_state.setdefault("_uq_exam_marked", set())
+        mcq = mcqs[idx]
+        qkey = f"uqexam_{tid}_{idx+1}"
+        correct_letter = (mcq.get("correct_answer_letter") or "").strip().upper()
+        is_submitted = idx in submitted
+
+        mark_label = "⚑ Unmark" if idx in marked else "⚑ Mark for review"
+        if st.button(mark_label, key=f"uq_exmark_{tid}_{idx}"):
+            marked.symmetric_difference_update({idx})
+            st.rerun()
+
+        _inject_q_styles()
+        img = (mcq.get("image_url") or "").strip()
+        if img:
+            try:
+                st.image(img, use_container_width=True)
+            except Exception:
+                st.caption("(image could not be loaded)")
+        st.markdown('<div class="uq-type-label">Single Best Answer</div>',
+                    unsafe_allow_html=True)
+        st.markdown(f'<div class="uq-stem">{_stem_html(mcq["question_text"])}</div>',
+                    unsafe_allow_html=True)
+
+        options = [_clean_opt(o) for o in (mcq.get("options") or [])]
+
+        if not is_submitted:
+            try:
+                from stem_format import options_container
+                _oc = options_container(st, qkey)
+            except Exception:
+                _oc = st.container()
+            with _oc:
+                picked = st.radio("Answer", options, key=f"{qkey}_opt", index=None,
+                                  label_visibility="collapsed",
+                                  format_func=lambda o: _re.sub(r"^\s*([A-Za-z])[\.\)]\s*", r"\1.  ", o))
+            col_prev, col_sub, col_skip = st.columns([1, 2, 1])
+            with col_prev:
+                if idx > 0 and st.button("← Previous", key=f"uq_exprev_{tid}"):
+                    st.session_state["_uq_exam_idx"] = idx - 1
+                    st.rerun()
+            with col_sub:
+                if st.button("Submit Answer", key=f"uq_exsub_{tid}", type="primary",
+                             use_container_width=True):
+                    if picked:
+                        pl = picked.strip()[0].upper()
+                        ok = pl == correct_letter
+                        submitted[idx] = {"picked": pl, "correct": ok}
+                        _record_mcq(tid, qkey, ok)
+                        st.rerun()
+                    else:
+                        st.warning("Select an answer first.")
+            with col_skip:
+                if idx < total - 1 and st.button("Skip →", key=f"uq_exskip_{tid}"):
+                    st.session_state["_uq_exam_idx"] = idx + 1
+                    st.rerun()
+        else:
+            sub = submitted[idx]
+            for o in options:
+                letter = o.strip()[0].upper() if o.strip() else None
+                text = o[2:].strip() if len(o) > 2 else o
+                if letter == correct_letter:
+                    state = "correct"
+                elif letter == sub["picked"] and not sub["correct"]:
+                    state = "wrong"
+                else:
+                    state = "dim"
+                st.markdown(_uq_opt_row_html(text, state), unsafe_allow_html=True)
+            _uq_explanation_html(mcq.get("explanation"), mcq.get("key_learning_points"))
+            with st.expander("💬 Feedback on this question"):
+                _render_feedback(mcq, f"{qkey}_fb")
+            col_p2, col_n2 = st.columns(2)
+            with col_p2:
+                if idx > 0 and st.button("← Previous", key=f"uq_exprev2_{tid}",
+                                         use_container_width=True):
+                    st.session_state["_uq_exam_idx"] = idx - 1
+                    st.rerun()
+            with col_n2:
+                if idx < total - 1:
+                    if st.button("Next →", key=f"uq_exnext2_{tid}", type="primary",
+                                 use_container_width=True):
+                        st.session_state["_uq_exam_idx"] = idx + 1
+                        st.rerun()
+                else:
+                    if st.button("🏁 Finish Session", key=f"uq_exfin_{tid}",
+                                 type="primary", use_container_width=True):
+                        st.session_state["_uq_mcq_mode"] = "results"
+                        st.rerun()
+
+    with main_col:
+        pct = ((idx + 1) / total) * 100
+        attempted = len(submitted)
+        correct_n = sum(1 for v in submitted.values() if v["correct"])
+        st.markdown(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;'
+            f'padding:14px 20px;margin-bottom:16px;">'
+            f'<span style="font-weight:700;color:#5B62F2;font-size:1rem;">Item {idx+1} / {total}</span>'
+            f'<div style="flex:1;margin:0 20px;background:#E2E6F5;border-radius:4px;height:6px;">'
+            f'<div style="width:{pct:.0f}%;background:#5B62F2;height:6px;border-radius:4px;"></div></div>'
+            f'<span style="font-weight:700;color:#6B7290;font-family:monospace;font-size:1rem;">⏱ {_fmt_time(elapsed)}</span>'
+            f'</div>', unsafe_allow_html=True)
+        if attempted:
+            acc = correct_n / attempted * 100
+            st.markdown(
+                f'<div style="display:flex;gap:16px;margin-bottom:12px;">'
+                f'<span style="background:#EAF7EE;color:#4CAF6D;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">✅ {correct_n} correct</span>'
+                f'<span style="background:#FCEDEC;color:#E5534B;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">❌ {attempted-correct_n} incorrect</span>'
+                f'<span style="background:#EEF0FE;color:#5B62F2;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:600;">📊 {acc:.0f}% accuracy</span>'
+                f'</div>', unsafe_allow_html=True)
+        _answer_area(idx, total)
+        st.markdown("---")
+        if st.button("← Back to mode select", key=f"uq_exback_{tid}"):
+            st.session_state["_uq_mcq_mode"] = None
+            st.rerun()
+
+
+def _mcq_results_screen(tid, mcqs):
+    submitted = st.session_state.get("_uq_exam_submitted", {})
+    total = len(mcqs)
+    attempted = len(submitted)
+    correct_n = sum(1 for v in submitted.values() if v["correct"])
+    elapsed = time.time() - st.session_state.get("_uq_exam_start", time.time())
+    acc = correct_n / attempted * 100 if attempted else 0
+
+    st.markdown("### 🏁 Session complete")
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("Attempted", f"{attempted}/{total}")
+    r2.metric("Correct", correct_n)
+    r3.metric("Accuracy", f"{acc:.1f}%")
+    r4.metric("Time", _fmt_time(elapsed))
+    if acc >= 80:
+        st.success("🎉 Above 80% — you're well prepared on this topic.")
+    elif acc >= 60:
+        st.warning("📚 Good effort — review the ones you got wrong.")
+    else:
+        st.error("🔄 Below 60% — revisit the material and try again.")
+    col_a, col_b = st.columns(2)
+    if col_a.button("🔄 Try again", key=f"uq_res_again_{tid}", type="primary",
+                    use_container_width=True):
+        st.session_state["_uq_mcq_mode"] = None
+        st.rerun()
+    if col_b.button("← Back to topics", key=f"uq_res_back_{tid}",
+                    use_container_width=True):
+        st.session_state["_uq_mcq_mode"] = None
+        _go("topics")
+
+
+def _mcq_section(tid, mcqs):
+    """Route the MCQ experience: chooser → exam / review / results."""
+    mode = st.session_state.get("_uq_mcq_mode")
+    if mode == "exam":
+        _mcq_exam_panel(tid, mcqs)
+    elif mode == "results":
+        _mcq_results_screen(tid, mcqs)
+    elif mode == "review":
+        _mcq_study_panel(tid, mcqs)
+    else:
+        _mcq_mode_chooser(tid, mcqs)
+
+
+def _viva_section(tid, vivas):
+    """The existing viva self-marking flow, extracted so the pill router can
+    call it on its own."""
+    ratings = _topic_viva_progress(tid)
+    marks = _topic_viva_marks(tid)
+    reviewed = len(ratings)
+    marks_scored_sum = sum(m["scored"] for m in marks.values())
+    marks_max_sum = sum(m["max"] for m in marks.values())
+
+    col_p, col_cnt, col_marks = st.columns([2.3, 1, 1])
+    with col_p:
+        st.progress(reviewed / len(vivas) if vivas else 0)
+    with col_cnt:
+        st.caption(f"{reviewed} / {len(vivas)} reviewed")
+    with col_marks:
+        st.markdown(
+            f'<div style="background:#EEF0FE;border-radius:10px;padding:6px 14px;text-align:center;">'
+            f'<div style="color:#5B62F2;font-size:0.7rem;font-weight:600;text-transform:uppercase;'
+            f'letter-spacing:0.05em;">Your Marks</div>'
+            f'<div style="color:#1E2233;font-size:1.3rem;font-weight:700;">'
+            f'{marks_scored_sum:g} / {marks_max_sum:g}</div></div>',
+            unsafe_allow_html=True)
+
+    if reviewed:
+        hard_v = sum(1 for v in ratings.values() if v == 1)
+        good_v = sum(1 for v in ratings.values() if v == 2)
+        easy_v = sum(1 for v in ratings.values() if v == 3)
+        st.markdown(
+            f'<span style="background:#FCEDEC;color:#E5534B;padding:4px 12px;border-radius:20px;'
+            f'font-size:0.8rem;font-weight:600;margin-right:6px;">🔴 Hard: {hard_v}</span>'
+            f'<span style="background:#FFF6E5;color:#B8860B;padding:4px 12px;border-radius:20px;'
+            f'font-size:0.8rem;font-weight:600;margin-right:6px;">🟡 Good: {good_v}</span>'
+            f'<span style="background:#EAF7EE;color:#4CAF6D;padding:4px 12px;border-radius:20px;'
+            f'font-size:0.8rem;font-weight:600;">🟢 Easy: {easy_v}</span>',
+            unsafe_allow_html=True)
+    st.write("")
+
+    for n, qa in enumerate(vivas, 1):
+        _viva_card(tid, qa, n, key=f"uqviva_{tid}_{n}")
+
+
 def _study_view(content):
     tid = st.session_state.get("_uq_topic")
-
     # Combined EMED set built from the selector
     if tid == "__EMED_CUSTOM__":
         mcqs = st.session_state.get("_emed_combined", [])
@@ -1162,53 +1528,37 @@ def _study_view(content):
         st.info("No questions in this topic yet.")
         return
 
-    sub_tabs = []
-    if mcqs: sub_tabs.append(f"📝 MCQs ({len(mcqs)})")
-    if vivas: sub_tabs.append(f"🗣️ Viva ({len(vivas)})")
-    tabs = st.tabs(sub_tabs)
-    ti = 0
-    if mcqs:
-        with tabs[ti]:
-            _mcq_study_panel(tid, mcqs)
-        ti += 1
-    if vivas:
-        with tabs[ti]:
-            ratings = _topic_viva_progress(tid)
-            marks = _topic_viva_marks(tid)
-            reviewed = len(ratings)
-            marks_scored_sum = sum(m["scored"] for m in marks.values())
-            marks_max_sum = sum(m["max"] for m in marks.values())
+    # Which type did the row's pill launch? "mcq" | "viva" | "all".
+    # A topic with only one type collapses to that type automatically.
+    tfilter = st.session_state.get("_uq_type_filter", "all")
+    if not vivas:
+        tfilter = "mcq"
+    elif not mcqs:
+        tfilter = "viva"
 
-            col_p, col_cnt, col_marks = st.columns([2.3, 1, 1])
-            with col_p:
-                st.progress(reviewed / len(vivas) if vivas else 0)
-            with col_cnt:
-                st.caption(f"{reviewed} / {len(vivas)} reviewed")
-            with col_marks:
-                st.markdown(
-                    f'<div style="background:#EEF0FE;border-radius:10px;padding:6px 14px;text-align:center;">'
-                    f'<div style="color:#5B62F2;font-size:0.7rem;font-weight:600;text-transform:uppercase;'
-                    f'letter-spacing:0.05em;">Your Marks</div>'
-                    f'<div style="color:#1E2233;font-size:1.3rem;font-weight:700;">'
-                    f'{marks_scored_sum:g} / {marks_max_sum:g}</div></div>',
-                    unsafe_allow_html=True)
+    # In-session switch so you can flip type without going back to the table.
+    if mcqs and vivas:
+        opts = [f"📝 MCQ ({len(mcqs)})", f"🗣️ Viva ({len(vivas)})", "Both"]
+        cur = {"mcq": 0, "viva": 1, "all": 2}.get(tfilter, 2)
+        pick = st.radio("Question type", opts, index=cur, horizontal=True,
+                        label_visibility="collapsed", key=f"_uq_typepick_{tid}")
+        new_filter = {0: "mcq", 1: "viva", 2: "all"}[opts.index(pick)]
+        if new_filter != tfilter:
+            st.session_state["_uq_type_filter"] = new_filter
+            st.session_state["_uq_mcq_mode"] = None
+            st.rerun()
+        tfilter = new_filter
 
-            if reviewed:
-                hard_v = sum(1 for v in ratings.values() if v == 1)
-                good_v = sum(1 for v in ratings.values() if v == 2)
-                easy_v = sum(1 for v in ratings.values() if v == 3)
-                st.markdown(
-                    f'<span style="background:#FCEDEC;color:#E5534B;padding:4px 12px;border-radius:20px;'
-                    f'font-size:0.8rem;font-weight:600;margin-right:6px;">🔴 Hard: {hard_v}</span>'
-                    f'<span style="background:#FFF6E5;color:#B8860B;padding:4px 12px;border-radius:20px;'
-                    f'font-size:0.8rem;font-weight:600;margin-right:6px;">🟡 Good: {good_v}</span>'
-                    f'<span style="background:#EAF7EE;color:#4CAF6D;padding:4px 12px;border-radius:20px;'
-                    f'font-size:0.8rem;font-weight:600;">🟢 Easy: {easy_v}</span>',
-                    unsafe_allow_html=True)
-            st.write("")
-
-            for n, qa in enumerate(vivas, 1):
-                _viva_card(tid, qa, n, key=f"uqviva_{tid}_{n}")
+    if tfilter == "mcq":
+        _mcq_section(tid, mcqs)
+    elif tfilter == "viva":
+        _viva_section(tid, vivas)
+    else:
+        # Both: MCQ (with its exam/review chooser) above, viva below.
+        _mcq_section(tid, mcqs)
+        st.markdown("---")
+        st.markdown("### 🗣️ Viva")
+        _viva_section(tid, vivas)
 
 
 
@@ -1216,10 +1566,15 @@ def _study_view(content):
 # Entry point
 # ---------------------------------------------------------------------------
 
-def render_uq(persist_get=None, persist_set=None, user=None):
+def render_uq(persist_get=None, persist_set=None, user=None,
+              feedback_get=None, feedback_set=None):
     user = user or "you"
     st.session_state["_uq_persist_set"] = persist_set
     st.session_state["_uq_persist_user"] = user
+    # Hooks so the per-question 👍/👎 widget writes to the app's mcq_feedback
+    # store (Supabase + SQLite). Absent when uq.py runs standalone.
+    st.session_state["_uq_feedback_get"] = feedback_get
+    st.session_state["_uq_feedback_set"] = feedback_set
     _ensure_loaded(persist_get, user)
     content = _load_content()
 
