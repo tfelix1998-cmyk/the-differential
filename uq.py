@@ -1578,19 +1578,15 @@ def render_uq(persist_get=None, persist_set=None, user=None,
     _ensure_loaded(persist_get, user)
     content = _load_content()
 
-    nav = st.radio("section", ["📊 Dashboard", "🗂️ Topics"],
-                   horizontal=True, label_visibility="collapsed", key="_uq_nav")
-
-    if nav.endswith("Dashboard"):
-        _dashboard_view(content, user)
+    # The module opens straight to its content now — overall stats live on the
+    # single top-level Dashboard, so there's no per-module dashboard here.
+    view = st.session_state.get("_uq_view", "topics")
+    if view == "study":
+        _study_view(content)
+    elif st.session_state.get("_uq_module"):
+        _topics_view(content)
     else:
-        view = st.session_state.get("_uq_view", "topics")
-        if view == "study":
-            _study_view(content)
-        elif st.session_state.get("_uq_module"):
-            _topics_view(content)
-        else:
-            _modules_view(content)
+        _modules_view(content)
 
     _flush(persist_set, user)
 

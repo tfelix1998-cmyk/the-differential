@@ -1288,19 +1288,15 @@ def render_gsse(persist_get=None, persist_set=None, user=None):
     _ensure_loaded(persist_get, user)
     _, qindex = _load_questions()
 
-    nav = st.radio("section", ["📊 Dashboard", "🗂️ Topics"],
-                   horizontal=True, label_visibility="collapsed", key="_gsse_nav")
-
-    if nav.endswith("Dashboard"):
-        _dashboard_view(qindex, user)
+    # Opens straight to the topic roadmap now — overall readiness and stats live
+    # on the single top-level Dashboard, not a per-module one.
+    view = st.session_state.get("_gsse_view", "topics")
+    if view == "subtopics":
+        _subtopics_view(qindex)
+    elif view == "study":
+        _study_view(qindex)
     else:
-        view = st.session_state.get("_gsse_view", "topics")
-        if view == "subtopics":
-            _subtopics_view(qindex)
-        elif view == "study":
-            _study_view(qindex)
-        else:
-            _topics_view(qindex)
+        _topics_view(qindex)
 
     _flush(persist_set, user)
 
