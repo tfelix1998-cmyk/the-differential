@@ -244,6 +244,7 @@ SECTION_ORDER = [
     "Intensive Care",
     "Orthopaedics",
     "EMED",
+    "LLP",
 ]
 
 SECTION_ICONS = {
@@ -252,7 +253,21 @@ SECTION_ICONS = {
     "Intensive Care": "🫁",
     "Orthopaedics": "🦴",
     "EMED": "🎓",
+    "LLP": "📋",
 }
+
+# ------------------------------------------------------------
+# LLP section topics (Longitudinal Learning Plan, Units 3 & 4)
+# Topic names are imported from llp_questions so the two files can never
+# drift apart - the bank keys built below must match the keys that
+# llp_questions.LLP_BANKS / LLP_VIVA use verbatim, or the loader finds nothing.
+# ------------------------------------------------------------
+try:
+    from llp_questions import LLP_TOPICS as _LLP_TOPIC_NAMES
+except Exception:
+    _LLP_TOPIC_NAMES = []
+
+_LLP_BANKS = [("LLP", name) for name in _LLP_TOPIC_NAMES]
 
 
 def _slug(s):
@@ -289,6 +304,16 @@ def _build_topics():
             "mcq_bank": f"{_COURSE} :: EMED - {topic_name} (MCQ)",
             "viva_bank": None,
             "viva_source": None,
+        })
+    # LLP topics (MCQ + VIVA, from llp_questions.LLP_BANKS / LLP_VIVA)
+    for section, topic_name in _LLP_BANKS:
+        topics.append({
+            "id": f"{_slug(section)}/{_slug(topic_name)}",
+            "name": topic_name,
+            "section": section,
+            "mcq_bank": f"{_COURSE} :: LLP - {topic_name} (MCQ)",
+            "viva_bank": f"{_COURSE} :: LLP - {topic_name} (VIVA)",
+            "viva_source": "llp",
         })
     return topics
 

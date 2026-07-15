@@ -45,6 +45,11 @@ def _load_content():
         from builtin_questions import BUILTIN_VIVA
     except Exception:
         BUILTIN_VIVA = {}
+    # LLP banks (Longitudinal Learning Plan, Units 3 & 4) — MCQ + VIVA.
+    try:
+        from llp_questions import LLP_BANKS, LLP_VIVA
+    except Exception:
+        LLP_BANKS, LLP_VIVA = {}, {}
     # EMED bank (Broad Topic - Pathology) - added to uq module
     try:
         from emed_questions import EMED_BANKS
@@ -129,14 +134,20 @@ def _load_content():
 
     out = {}
     for t in ucfg.UQ_TOPICS:
-        # Look up MCQ bank in whichever source has it (IMPORTED for original UQ, EMED for new topics)
+        # Look up MCQ bank in whichever source has it (IMPORTED for original UQ,
+        # EMED for pathology topics, LLP for the Units 3 & 4 prescribing banks).
         mcqs = []
         if t["mcq_bank"]:
-            mcqs = IMPORTED_BANKS.get(t["mcq_bank"]) or EMED_BANKS.get(t["mcq_bank"]) or []
+            mcqs = (IMPORTED_BANKS.get(t["mcq_bank"])
+                    or EMED_BANKS.get(t["mcq_bank"])
+                    or LLP_BANKS.get(t["mcq_bank"])
+                    or [])
         if t["viva_source"] == "builtin":
             viva = BUILTIN_VIVA.get(t["viva_bank"], []) if t["viva_bank"] else []
         elif t["viva_source"] == "imported":
             viva = IMPORTED_VIVA.get(t["viva_bank"], []) if t["viva_bank"] else []
+        elif t["viva_source"] == "llp":
+            viva = LLP_VIVA.get(t["viva_bank"], []) if t["viva_bank"] else []
         else:
             viva = []  # EMED topics are MCQ-only
         out[t["id"]] = {"mcq": mcqs, "viva": viva, "name": t["name"], "section": t["section"]}
