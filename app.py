@@ -16,6 +16,7 @@ from prompts import VIVA_PROMPT, MCQ_PROMPT, ANKI_PROMPT, IMPORT_MCQ_PROMPT
 from psa import render_psa
 from gsse import render_gsse
 from uq import render_uq
+import dashboard as _dash
 try:
     from builtin_questions import BUILTIN_BANKS
 except Exception:
@@ -499,6 +500,122 @@ def uq_save_progress(progress, user):
     except Exception:
         pass
     _async_supabase_upsert("uq_progress", user, payload)
+
+
+# ── Dashboard data hooks ────────────────────────────────────────────────────
+# The unified dashboard reads from every stat source. Rather than let it reach
+# into each module's internals, we expose small normalised readers here and pass
+# them in via render(hooks=...). Everything below only READS already-persisted
+# data — no new storage, no schema changes.
+
+def _module_events(user):
+    """Flatten the GSSE + UQ/LLP practice event logs into one normalised list:
+    {ts, topic_id, topic_name, kind, correct, total, source}. Reads the
+    persisted progress blobs (Supabase-first via the load hooks), so it reflects
+    all practice even for modules not opened this session."""
+    out = []
+
+    # UQ / EMED / LLP — events tagged by section via uq_config
+    try:
+        import uq_config as _ucfg
+        uqp = uq_load_progress(user) or {}
+        for e in uqp.get("_events", []):
+            tid = e.get("topic_id")
+            topic = _ucfg.get_topic(tid) if hasattr(_ucfg, "get_topic") else None
+            source = (topic or {}).get("section") or "UQ"
+            out.append({
+                "ts": e.get("ts"), "topic_id": tid,
+                "topic_name": (topic or {}).get("name") or tid,
+                "kind": e.get("kind") or "mcq",
+                "correct": e.get("correct", 0), "total": e.get("total", 1),
+                "source": source,
+            })
+    except Exception:
+        pass
+
+    # GSSE — events tagged by science (Anatomy / Physiology / Pathology)
+    try:
+        import gsse as _gsse
+        gp = gsse_load_progress(user) or {}
+        for e in gp.get("_events", []):
+            sub_id = e.get("subtopic_id")
+            name = sub_id
+            try:
+                _t, _s = _gsse.get_subtopic(sub_id)
+                if _s:
+                    name = _s.get("name", sub_id)
+            except Exception:
+                pass
+            out.append({
+                "ts": e.get("ts"), "topic_id": sub_id, "topic_name": name,
+                "kind": "mcq", "correct": e.get("correct", 0),
+                "total": e.get("total", 1),
+                "source": f"GSSE · {e.get('science') or 'Mixed'}",
+            })
+    except Exception:
+        pass
+
+    return out
+
+
+def _fetch_psa(user):
+    """Normalise PSA attempts for the dashboard: [{style, marks, max_marks, ts}]."""
+    rows = []
+    if SUPABASE_ENABLED and supabase is not None:
+        try:
+            res = supabase.table("psa_attempts").select(
+                "style, marks, max_marks, created_at").eq("user", user).execute()
+            return [{"style": r.get("style"), "marks": r.get("marks"),
+                     "max_marks": r.get("max_marks"), "ts": r.get("created_at")}
+                    for r in res.data]
+        except Exception:
+            pass
+    try:
+        for style, marks, mx, ts in c.execute(
+                "SELECT style, marks, max_marks, timestamp FROM psa_attempts WHERE user=?",
+                (user,)).fetchall():
+            rows.append({"style": style, "marks": marks, "max_marks": mx, "ts": ts})
+    except Exception:
+        pass
+    return rows
+
+
+@st.cache_data(show_spinner=False)
+def _bank_total():
+    """Total questions available across all built-in banks — the coverage denom.
+    Cached because it never changes within a session."""
+    total = 0
+    try:
+        import json as _json
+        total += len(_json.load(open("gsse_seed_questions.json")).get("questions", []))
+    except Exception:
+        pass
+    try:
+        from uq import _load_content
+        for v in _load_content().values():
+            total += len(v.get("mcq", [])) + len(v.get("viva", []))
+    except Exception:
+        pass
+    return total
+
+
+def get_exam_date(user):
+    """The user's exam date (ISO string) or None. Stored in the uq_progress blob
+    under a reserved key so it needs no new table and syncs like everything else."""
+    try:
+        p = uq_load_progress(user) or {}
+        return p.get("_exam_date")
+    except Exception:
+        return None
+
+
+def set_exam_date(user, iso_date):
+    try:
+        p = uq_load_progress(user) or {}
+        p["_exam_date"] = iso_date
+        uq_save_progress(p, user)
+    except Exception:
+        pass
 
 
 def doc_fingerprint(pdf_text):
@@ -1527,102 +1644,17 @@ if tab_gsse:
 # ═════════════════════════════════════════════════════════════════════════════
 if tab_dash:
     du = st.session_state.get("current_user", "Terry")
-    st.markdown(f"### Study Dashboard — {du}")
+    _dash.render(du, hooks={
+        "fetch_attempts": fetch_attempts,
+        "fetch_viva": fetch_viva,
+        "module_events": _module_events,
+        "fetch_psa": _fetch_psa,
+        "bank_total": _bank_total,
+        "get_exam_date": get_exam_date,
+        "set_exam_date": set_exam_date,
+    })
 
-    total_mcqs   = _scalar("SELECT COUNT(*) FROM mcq_attempts WHERE user=?", (du,))
-    correct_mcqs = _scalar("SELECT COUNT(*) FROM mcq_attempts WHERE is_correct=1 AND user=?", (du,))
-    accuracy     = (correct_mcqs / total_mcqs * 100) if total_mcqs else 0
-    total_viva   = _scalar("SELECT COUNT(*) FROM viva_reviews WHERE user=?", (du,))
-    easy_n  = _scalar("SELECT COUNT(*) FROM viva_reviews WHERE confidence=3 AND user=?", (du,))
-    good_n  = _scalar("SELECT COUNT(*) FROM viva_reviews WHERE confidence=2 AND user=?", (du,))
-    hard_n  = _scalar("SELECT COUNT(*) FROM viva_reviews WHERE confidence=1 AND user=?", (du,))
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("MCQs Attempted",      total_mcqs)
-    m2.metric("Correct Answers",     correct_mcqs)
-    m3.metric("Overall Accuracy",    f"{accuracy:.1f}%")
-    m4.metric("Viva Reviews",        total_viva)
-    st.markdown("")
-
-    # ── Performance by topic & category (the weak-spots tracker) ──
-    attempts = fetch_attempts(du)
-    if attempts:
-        st.markdown("#### 📊 Performance by topic")
-        st.caption("Accuracy per topic, grouped by category. Red = needs work, green = strong.")
-
-        # Aggregate by category -> topic -> (correct, total)
-        agg = {}
-        for a in attempts:
-            cat, disp = split_category(a.get("topic") or "Uncategorised")
-            agg.setdefault(cat, {}).setdefault(disp, [0, 0])
-            agg[cat][disp][1] += 1
-            if a.get("is_correct"):
-                agg[cat][disp][0] += 1
-
-        def bar_colour(pct):
-            if pct >= 75: return "#4CAF6D"
-            if pct >= 50: return "#5B62F2"
-            return "#E5534B"
-
-        for cat in sorted(agg.keys()):
-            # Category-level totals
-            c_correct = sum(v[0] for v in agg[cat].values())
-            c_total = sum(v[1] for v in agg[cat].values())
-            c_pct = (c_correct / c_total * 100) if c_total else 0
-            st.markdown(
-                f'<div style="margin-top:14px;font-weight:700;color:#5B62F2;">{cat} '
-                f'<span style="color:#6B7290;font-weight:500;font-size:0.85rem;">'
-                f'· {c_correct}/{c_total} ({c_pct:.0f}%)</span></div>',
-                unsafe_allow_html=True
-            )
-            for topic in sorted(agg[cat].keys()):
-                correct, tot = agg[cat][topic]
-                pct = (correct / tot * 100) if tot else 0
-                col = bar_colour(pct)
-                st.markdown(
-                    f'<div style="display:flex;align-items:center;gap:12px;margin:4px 0;">'
-                    f'<div style="width:160px;font-size:0.85rem;color:#1E2233;overflow:hidden;'
-                    f'text-overflow:ellipsis;white-space:nowrap;">{topic}</div>'
-                    f'<div style="flex:1;background:#E2E6F5;border-radius:6px;height:14px;position:relative;">'
-                    f'<div style="width:{pct:.0f}%;background:{col};height:14px;border-radius:6px;"></div></div>'
-                    f'<div style="width:70px;text-align:right;font-size:0.82rem;font-weight:600;color:{col};">'
-                    f'{pct:.0f}% ({correct}/{tot})</div></div>',
-                    unsafe_allow_html=True
-                )
-        st.markdown("")
-
-        # ── Progress over time: rolling accuracy ──
-        dated = [a for a in attempts if a.get("ts")]
-        st.markdown("#### 📈 Accuracy over time")
-        def _day(ts):
-            return str(ts)[:10]
-        by_day = {}
-        for a in dated:
-            d = _day(a["ts"])
-            by_day.setdefault(d, [0, 0])
-            by_day[d][1] += 1
-            if a.get("is_correct"):
-                by_day[d][0] += 1
-        days_sorted = sorted(by_day.keys())
-
-        if len(days_sorted) >= 2:
-            rows = [{"Date": d, "Accuracy %": round(by_day[d][0] / by_day[d][1] * 100, 1)}
-                    for d in days_sorted]
-            try:
-                df_prog = pd.DataFrame(rows).set_index("Date")
-                st.line_chart(df_prog, height=220)
-            except Exception:
-                pass
-        elif len(days_sorted) == 1:
-            d = days_sorted[0]
-            day_pct = round(by_day[d][0] / by_day[d][1] * 100, 1)
-            st.info(f"📊 Today's accuracy: **{day_pct}%** ({by_day[d][0]}/{by_day[d][1]}). "
-                    f"Come back tomorrow — the trend line appears once you've studied on 2+ days.")
-        else:
-            st.caption("Your accuracy trend will appear here once you've answered some MCQs.")
-        st.markdown("")
-
-    # ── Flagged questions: things you rated 👎 or left notes on ──
+    # Flagged questions (👎 or noted) — kept from the old dashboard, still useful.
     def _load_flagged():
         if SUPABASE_ENABLED:
             try:
@@ -1637,6 +1669,7 @@ if tab_dash:
     flagged = [f for f in _load_flagged()
                if (f[1] == "down") or (f[2] and f[2].strip())]
     if flagged:
+        st.write("")
         with st.expander(f"🚩 Flagged questions to improve ({len(flagged)})"):
             for qt, rating, note in flagged:
                 tag = "👎" if rating == "down" else "📝"
@@ -1644,10 +1677,10 @@ if tab_dash:
                 st.markdown(f"{tag} **{short}**")
                 if note and note.strip():
                     st.caption(f"Note: {note}")
-                st.markdown("")
-    st.markdown("")
 
-    st.markdown("#### 📅 Activity Heatmap")
+    # Activity heatmap — kept, it's a nice at-a-glance of consistency.
+    st.write("")
+    st.markdown("#### Activity")
     st.markdown(
         '<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;padding:20px 24px;">'
         + build_heatmap_html(days=119, user=du) +
@@ -1659,43 +1692,7 @@ if tab_dash:
         '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#4CAF6D;"></span>'
         '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#227A46;"></span>'
         'More &nbsp;·&nbsp; darker = more questions that day'
-        '</div>'
-        '</div>', unsafe_allow_html=True
-    )
-    st.markdown("")
-
-    col_l, col_r = st.columns(2)
-    with col_l:
-        st.markdown("#### 📈 MCQ Accuracy Over Time")
-        history = c.execute("SELECT timestamp, is_correct FROM mcq_attempts WHERE user=? ORDER BY timestamp ASC", (du,)).fetchall()
-        if history:
-            daily = {}
-            for ts, ok in history:
-                d = ts.split(" ")[0]
-                if d not in daily: daily[d] = [0, 0]
-                daily[d][1] += 1
-                if ok: daily[d][0] += 1
-            df_acc = pd.DataFrame([{"date": d, "Accuracy (%)": v[0]/v[1]*100} for d, v in daily.items()]).set_index("date")
-            st.line_chart(df_acc, height=220)
-        else:
-            st.markdown('<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;padding:40px;text-align:center;color:#6B7290;">Attempt MCQs to see trends</div>', unsafe_allow_html=True)
-
-    with col_r:
-        st.markdown("#### 🧠 Viva Confidence")
-        if total_viva:
-            conf_df = pd.DataFrame({"Confidence": ["🔴 Hard","🟡 Good","🟢 Easy"], "Count": [hard_n, good_n, easy_n]}).set_index("Confidence")
-            st.bar_chart(conf_df, height=220)
-        else:
-            st.markdown('<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;padding:40px;text-align:center;color:#6B7290;">Rate viva confidence to see this</div>', unsafe_allow_html=True)
-
-    st.markdown("#### 🗒️ Recent MCQ Attempts")
-    recent = c.execute("SELECT timestamp, topic, is_correct FROM mcq_attempts WHERE user=? ORDER BY timestamp DESC LIMIT 15", (du,)).fetchall()
-    if recent:
-        rdf = pd.DataFrame(recent, columns=["Time","Topic","Correct"])
-        rdf["Result"] = rdf["Correct"].map({1:"✅ Correct", 0:"❌ Incorrect"})
-        st.dataframe(rdf[["Time","Topic","Result"]], use_container_width=True, hide_index=True)
-    else:
-        st.markdown('<div style="background:#FFFFFF;border:1px solid #E2E6F5;border-radius:12px;padding:30px;text-align:center;color:#6B7290;">No attempts yet</div>', unsafe_allow_html=True)
+        '</div></div>', unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # VIVA TAB
