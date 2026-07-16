@@ -331,7 +331,7 @@ GLUED_FIXES = {
     # --- Real-word OCR corruptions found in a full-bank audit (2026-07) ---
     # These survive the density cleaner because each is a plausible-looking
     # token, not obvious junk. Frequencies are the whole-EMED counts at audit.
-    "mmbg": "mmHg", "naci": "NaCl", "mribrain": "MRI brain",
+    "mmbg": "mmHg", "mmbhg": "mmHg", "naci": "NaCl", "mribrain": "MRI brain",
     "fron": "Iron", "midazoiam": "midazolam", "midazolarn": "midazolam",
     "amitryptyline": "amitriptyline", "firsthour": "first hour",
     "24-nours": "24-hours", "ina": "in a",
@@ -532,6 +532,8 @@ def _fix_units(text):
     text = re.sub(r"\bMRI sean\b", "MRI scan", text)
     text = re.sub(r"\bNaC[iI]\b", "NaCl", text)
     text = re.sub(r"\bMribrain\b", "MRI brain", text)
+    # mmHg OCR variants, including when glued to numbers (e.g. "90/50mmbHg"):
+    text = re.sub(r"mmb+[Hh]?g", "mmHg", text)
     # OCR sometimes drops a stray colon after a spelled-out number:
     #   "two: minutes" -> "two minutes",  "approximately two: minutes"
     text = re.sub(r"\b(one|two|three|four|five|six|seven|eight|nine|ten):\s+"
