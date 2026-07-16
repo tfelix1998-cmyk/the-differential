@@ -328,6 +328,16 @@ GLUED_FIXES = {
     "inrheumatoid": "in rheumatoid", "inyoung": "in young", "inthe": "in the",
     "inpatients": "in patients", "isa": "is a", "itis": "it is",
     "ofthe": "of the", "tothe": "to the", "itrisks": "it risks",
+    # --- Real-word OCR corruptions found in a full-bank audit (2026-07) ---
+    # These survive the density cleaner because each is a plausible-looking
+    # token, not obvious junk. Frequencies are the whole-EMED counts at audit.
+    "mmbg": "mmHg", "naci": "NaCl", "mribrain": "MRI brain",
+    "fron": "Iron", "midazoiam": "midazolam", "midazolarn": "midazolam",
+    "amitryptyline": "amitriptyline", "firsthour": "first hour",
+    "24-nours": "24-hours", "ina": "in a",
+    # Seizures-bank audit additions:
+    "phenyloin": "phenytoin", "leveliracetam": "levetiracetam",
+    "ethosuximlde": "ethosuximide", "carbamazeplne": "carbamazepine",
 }
 WORD_FIXES.update(GLUED_FIXES)
 
@@ -515,6 +525,18 @@ def _fix_units(text):
     text = _U_HBA1C.sub("HbA1c", text)
     text = _U_FEV1.sub("FEV1", text)
     text = _U_GKG.sub(r"\1 g/kg", text)   # "mannitol 19/kg" -> "1 g/kg"
+    # Targeted phrase corrections — safe only in context, so not word-level:
+    #   "CT sean" -> "CT scan" (leaves the name "Sean" alone elsewhere)
+    #   "NaCi"/"NaCI" (capital-I-for-l) -> "NaCl"
+    text = re.sub(r"\bCT sean\b", "CT scan", text)
+    text = re.sub(r"\bMRI sean\b", "MRI scan", text)
+    text = re.sub(r"\bNaC[iI]\b", "NaCl", text)
+    text = re.sub(r"\bMribrain\b", "MRI brain", text)
+    # OCR sometimes drops a stray colon after a spelled-out number:
+    #   "two: minutes" -> "two minutes",  "approximately two: minutes"
+    text = re.sub(r"\b(one|two|three|four|five|six|seven|eight|nine|ten):\s+"
+                  r"(minutes?|hours?|days?|weeks?|seconds?|months?|years?)\b",
+                  r"\1 \2", text, flags=re.IGNORECASE)
     return text
 
 

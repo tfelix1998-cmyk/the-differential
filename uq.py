@@ -118,6 +118,14 @@ def _load_content():
         except Exception:
             QUARANTINE = {}
         EMED_BANKS = clean_banks(EMED_BANKS, quarantine=QUARANTINE)
+        # Correct miscategorised questions (moved to their proper bank). Runs
+        # AFTER cleaning because it keys on stem content, which the cleaner has
+        # by now repaired and stabilised.
+        try:
+            from emed_recategorise import apply_moves
+            EMED_BANKS = apply_moves(EMED_BANKS)
+        except Exception:
+            pass
     except Exception:
         # Cleaner unavailable — fall back to the quarantine drop on its own, so
         # the module still loads (dirty, but servable).
