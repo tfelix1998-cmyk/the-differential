@@ -60,6 +60,27 @@ def _day(ts):
     return str(ts)[:10] if ts else None
 
 
+# Raw internal category names that should never reach the UI.
+_LABEL_FIXES = {
+    "__EMED_CUSTOM__": "EMED (custom)",
+    "Uncategorised": "General",
+    "": "General",
+    None: "General",
+}
+
+
+def _pretty(label):
+    """Turn a raw stored category/topic into something readable on the dashboard.
+    Strips leading underscores/markers and maps known internal names."""
+    if label in _LABEL_FIXES:
+        return _LABEL_FIXES[label]
+    s = str(label).strip()
+    # e.g. "__EMED_CUSTOM__" -> already mapped; catch other __X__ forms
+    if s.startswith("__") and s.endswith("__") and len(s) > 4:
+        s = s[2:-2].replace("_", " ").title()
+    return s or "General"
+
+
 # ---------------------------------------------------------------------------
 # Aggregation — the one place that reads every stat source
 # ---------------------------------------------------------------------------
@@ -130,7 +151,7 @@ def aggregate(user, hooks):
     for cat, cv in cats.items():
         for tname, tv in cv["topics"].items():
             if tv["total"] >= 3:  # need a few attempts before calling it weak
-                weak.append({"cat": cat, "topic": tname,
+                weak.append({"cat": _pretty(cat), "topic": _pretty(tname),
                              "pct": round(tv["correct"] / tv["total"] * 100),
                              "n": tv["total"]})
     weak.sort(key=lambda w: (w["pct"], -w["n"]))
@@ -144,8 +165,25 @@ def aggregate(user, hooks):
         slot = by_day.setdefault(d, [0, 0])
         slot[1] += 1
         slot[0] += r["correct"]
-    trend = [{"date": d, "acc": round(by_day[d][0] / by_day[d][1] * 100, 1),
-              "n": by_day[d][1]} for d in sorted(by_day)]
+    days_sorted = sorted(by_day)
+    raw_trend = [{"date": d, "acc": round(by_day[d][0] / by_day[d][1] * 100, 1),
+                  "n": by_day[d][1]} for d in days_sorted]
+
+    # Smoothed, volume-weighted trend so a 1-question day can't spike to 0/100.
+    # For each active day we take a 7-day trailing window and compute accuracy
+    # over the POOLED correct/total in that window (weights by volume), then
+    # that's the smoothed value. Reads as a real trend, not day-to-day noise.
+    trend = []
+    for i, d in enumerate(days_sorted):
+        d_date = _dt.date.fromisoformat(d)
+        window_start = d_date - _dt.timedelta(days=6)
+        wc = wt = 0
+        for dd in days_sorted[max(0, i - 30):i + 1]:
+            if _dt.date.fromisoformat(dd) >= window_start:
+                wc += by_day[dd][0]; wt += by_day[dd][1]
+        smooth = round(wc / wt * 100, 1) if wt else 0.0
+        trend.append({"date": d, "acc": smooth,
+                      "raw": raw_trend[i]["acc"], "n": raw_trend[i]["n"]})
 
     active_days = set(by_day.keys())
     today = _dt.date.today()
@@ -161,10 +199,20 @@ def aggregate(user, hooks):
     recent = []
     for cat, cv in cats.items():
         pct = round(cv["correct"] / cv["total"] * 100) if cv["total"] else 0
-        recent.append({"cat": cat, "pct": pct, "n": cv["total"]})
+        recent.append({"cat": _pretty(cat), "pct": pct, "n": cv["total"]})
     recent.sort(key=lambda r: r["n"], reverse=True)
 
     bank_total = hooks.get("bank_total", lambda: 0)() or 0
+
+    # Per-area accuracy, cleaned and sorted worst-first (this IS the weak-areas
+    # view — one list does both jobs, so render() needn't keep two).
+    areas = []
+    for cat, cv in cats.items():
+        if cv["total"] >= 1:
+            areas.append({"area": _pretty(cat),
+                          "pct": round(cv["correct"] / cv["total"] * 100),
+                          "n": cv["total"]})
+    areas.sort(key=lambda a: (a["pct"], -a["n"]))
 
     return {
         "answered": total_answered,
@@ -174,6 +222,7 @@ def aggregate(user, hooks):
         "streak": streak,
         "cats": cats,
         "weak": weak,
+        "areas": areas,
         "trend": trend,
         "continue": recent,
         "bank_total": bank_total,
@@ -242,13 +291,19 @@ def render(user, hooks):
 
     stats = aggregate(user, hooks)
 
-    # ---- Header: title + exam countdown (the hero) ----
+    # ---- Header: greeting + exam countdown (the hero) ----
     exam_key = f"_exam_date_{user}"
     saved_exam = hooks.get("get_exam_date", lambda u: None)(user)
+    hr = _dt.datetime.now().hour
+    greeting = ("Good morning" if hr < 12 else
+                "Good afternoon" if hr < 18 else "Good evening")
     head_l, head_r = st.columns([3, 2])
     with head_l:
-        st.markdown(f"## Dashboard <span style='color:{_MUTE};font-size:1rem;font-weight:500;'>· {user}</span>",
-                    unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='font-size:1.9rem;font-weight:800;color:{_INK};line-height:1.15;'>"
+            f"{greeting}, {user} 👋</div>"
+            f"<div style='color:{_MUTE};margin-top:2px;'>Here's where your revision stands.</div>",
+            unsafe_allow_html=True)
     with head_r:
         default = None
         if saved_exam:
@@ -318,12 +373,16 @@ def render(user, hooks):
 
     st.write("")
 
-    # ---- Trend line ----
+    # ---- Trend line (smoothed, volume-weighted) ----
     st.markdown("#### Accuracy over time")
     trend = stats["trend"]
     if len(trend) >= 2:
-        df = pd.DataFrame([{"Date": t["date"], "Accuracy %": t["acc"]} for t in trend]).set_index("Date")
-        st.line_chart(df, height=240, color=_PRIMARY)
+        st.caption("7-day rolling average, weighted by questions answered — so a "
+                   "light day doesn't swing the line.")
+        df = pd.DataFrame(
+            [{"Date": t["date"], "Accuracy %": t["acc"]} for t in trend]
+        ).set_index("Date")
+        st.line_chart(df, height=260, color=_PRIMARY)
     elif len(trend) == 1:
         st.info(f"Today's accuracy: **{trend[0]['acc']:.0f}%** "
                 f"({trend[0]['n']} answered). The trend line appears once you've "
@@ -332,47 +391,35 @@ def render(user, hooks):
         st.caption("Answer some questions to start the trend line.")
 
     st.write("")
+    st.write("")
 
-    # ---- Two columns: weak areas + per-category ----
-    col_weak, col_cat = st.columns(2)
-
-    with col_weak:
-        st.markdown("#### Weak areas")
-        st.caption("Lowest accuracy first — where revision pays off most.")
-        if stats["weak"]:
-            for w in stats["weak"][:8]:
-                col = _acc_colour(w["pct"])
-                st.markdown(
-                    f'<div style="display:flex;align-items:center;gap:10px;margin:7px 0;">'
-                    f'<div style="width:150px;font-size:0.85rem;color:{_INK};overflow:hidden;'
-                    f'text-overflow:ellipsis;white-space:nowrap;" title="{w["cat"]} · {w["topic"]}">{w["topic"]}</div>'
-                    f'<div style="flex:1;background:{_BORDER};border-radius:6px;height:12px;">'
-                    f'<div style="width:{w["pct"]}%;background:{col};height:12px;border-radius:6px;"></div></div>'
-                    f'<div style="width:52px;text-align:right;font-size:0.82rem;font-weight:700;color:{col};">'
-                    f'{w["pct"]}%</div></div>',
+    # ---- Weak Areas — one clean panel (merged; worst-first) ----
+    # This replaces the old two side-by-side lists (which showed the same data
+    # sorted two ways). One roomy list, full labels, category context on hover.
+    st.markdown("#### Weak areas")
+    st.caption("Every area you've practised, lowest accuracy first — revise from the top down.")
+    areas = stats.get("areas", [])
+    if areas:
+        st.markdown('<div style="background:{c};border:1px solid {b};border-radius:16px;'
+                    'padding:22px 26px;">'.format(c=_CARD, b=_BORDER),
                     unsafe_allow_html=True)
-        else:
-            st.caption("Answer at least 3 questions in a topic and it'll show here once "
-                       "there's enough to judge.")
-
-    with col_cat:
-        st.markdown("#### Accuracy by area")
-        cats = stats["cats"]
-        if cats:
-            ordered = sorted(cats.items(), key=lambda kv: kv[1]["total"], reverse=True)
-            for cat, cv in ordered:
-                pct = round(cv["correct"] / cv["total"] * 100) if cv["total"] else 0
-                col = _acc_colour(pct)
-                st.markdown(
-                    f'<div style="display:flex;align-items:center;gap:10px;margin:7px 0;">'
-                    f'<div style="width:150px;font-size:0.85rem;color:{_INK};font-weight:600;'
-                    f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{cat}</div>'
-                    f'<div style="flex:1;background:{_BORDER};border-radius:6px;height:12px;">'
-                    f'<div style="width:{pct}%;background:{col};height:12px;border-radius:6px;"></div></div>'
-                    f'<div style="width:88px;text-align:right;font-size:0.8rem;font-weight:600;color:{col};">'
-                    f'{pct}% ({cv["total"]})</div></div>',
-                    unsafe_allow_html=True)
-        else:
-            st.caption("No scored questions yet.")
+        rows_html = []
+        for a in areas:
+            col = _acc_colour(a["pct"])
+            rows_html.append(
+                f'<div style="display:flex;align-items:center;gap:16px;margin:14px 0;">'
+                f'  <div style="width:230px;font-size:0.92rem;color:{_INK};font-weight:600;'
+                f'       overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" '
+                f'       title="{a["area"]}">{a["area"]}</div>'
+                f'  <div style="flex:1;background:{_BORDER};border-radius:8px;height:14px;">'
+                f'    <div style="width:{a["pct"]}%;background:{col};height:14px;border-radius:8px;'
+                f'         transition:width .3s;"></div></div>'
+                f'  <div style="width:96px;text-align:right;font-size:0.9rem;font-weight:700;color:{col};">'
+                f'    {a["pct"]}% <span style="color:{_MUTE};font-weight:500;font-size:0.8rem;">'
+                f'({a["n"]})</span></div>'
+                f'</div>')
+        st.markdown("".join(rows_html) + "</div>", unsafe_allow_html=True)
+    else:
+        st.caption("No scored questions yet — answer some and your weakest areas surface here.")
 
     return stats
